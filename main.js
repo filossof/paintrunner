@@ -32,14 +32,26 @@
   let scale = 1, dpr = 1;
   function resize() {
     dpr = window.devicePixelRatio || 1;
-    scale = Math.min(window.innerWidth / W, window.innerHeight / H) * 0.96;
+    scale = Math.min(window.innerWidth / W, window.innerHeight / H); // as big as fits, same shape
     canvas.style.width = Math.floor(W * scale) + 'px';
     canvas.style.height = Math.floor(H * scale) + 'px';
     canvas.width = Math.floor(W * scale * dpr);
     canvas.height = Math.floor(H * scale * dpr);
   }
   window.addEventListener('resize', resize);
+  document.addEventListener('fullscreenchange', resize);
+  document.addEventListener('webkitfullscreenchange', resize);
   resize();
+
+  // Real full screen (hides the browser's bars). F toggles it.
+  function toggleFullscreen() {
+    const el = document.documentElement;
+    const isFull = document.fullscreenElement || document.webkitFullscreenElement;
+    try {
+      if (isFull) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+    } catch (e) { /* not supported */ }
+  }
 
   // ---------- input ----------
   const keys = new Set();
@@ -262,6 +274,7 @@
     if (game.toast && --game.toast.t <= 0) game.toast = null;
 
     if (tapped('KeyM')) showToast(Sound.toggleMusic() ? '♪ Music on' : '♪ Music off');
+    if (tapped('KeyF')) toggleFullscreen();
     if (tapped('KeyL') && game.mode !== 'play' && typeof UI !== 'undefined') {
       UI.openLeaderboard(game.mode === 'title' ? game.menuIdx : game.levelIdx);
       pressed.clear(); keys.clear(); mouse.down = false;
@@ -734,7 +747,7 @@
     text(`${game.levelIdx + 1} / ${LEVELS.length}   ${lv.name}`, 12, 15, 15, '#fff');
     w.cans.forEach((can, i) => drawCan(W / 2 - 22 + i * 22, 16, 0.75, can.got, can.got ? COLOR_HEX[ALL_COLORS[i]] : '#55555c'));
     text(`${(w.frame / 60).toFixed(1)}s`, W - 12, 15, 15, '#fff', 'right');
-    text(`R restart · Esc menu · Right-click wash · M music ${Sound.musicOn ? 'on' : 'off'}`, W - 80, 15, 12, 'rgba(255,255,255,0.55)', 'right', 500);
+    text(`R restart · Esc menu · M music ${Sound.musicOn ? 'on' : 'off'} · F full screen`, W - 80, 15, 12, 'rgba(255,255,255,0.55)', 'right', 500);
 
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, H - 40, W, 40);
@@ -823,7 +836,7 @@
     text(`★ ${totalStars()} / ${LEVELS.length * 3}`, W - 20, 24, 16, INK, 'right', 800);
     if (Math.floor(game.tick / 30) % 2 === 0) text('Press ENTER or click to play  ·  L for leaderboards', W / 2, 462, 16, INK, 'center', 700);
 
-    text('A/D move · W/Space jump · Mouse aim · Click throw · 1-5 colors · M music', W / 2, H - 22, 13, INK, 'center', 500);
+    text('A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen', W / 2, H - 22, 12, INK, 'center', 500);
     if (game.toast) text(game.toast.str, W / 2, 30, 14, INK, 'center', 600);
   }
 
@@ -877,6 +890,7 @@
   if (typeof UI !== 'undefined') {
     UI.init({
       toast: showToast,
+      toggleFullscreen,
       currentLevel: () => (game.mode === 'title' ? game.menuIdx : game.levelIdx),
       localProgress,
       applyProgress,

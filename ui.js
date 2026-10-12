@@ -30,6 +30,7 @@ const UI = (() => {
       ? `<span class="chip" title="${esc(u.email || '')}">${avatar(u.photoURL)}<span>${esc((u.displayName || 'Painter').split(' ')[0])}</span><button class="out" data-act="signout">Sign out</button></span>`
       : `<button class="btn" data-act="signin">${GOOGLE_G}<span>Sign in with Google</span></button>`;
     const left = `<button class="btn" data-act="boards">🏆 Leaderboards <small>(L)</small></button>` +
+      `<button class="btn" data-act="full" title="Full screen (F)">⛶ Full screen <small>(F)</small></button>` +
       (Cloud.isAdmin ? `<a class="btn small" href="stats.html" target="_blank" rel="noopener">📊 Stats</a>` : '');
     overlay.innerHTML = `<div class="corner left">${left}</div><div class="corner">${right}</div>`;
   }
@@ -39,6 +40,7 @@ const UI = (() => {
     if (act === 'signin') signIn();
     if (act === 'signout') { await Cloud.signOut(); api.toast('Signed out'); }
     if (act === 'boards') openLeaderboard(api.currentLevel());
+    if (act === 'full') api.toggleFullscreen();
   });
   // keep clicks on the overlay from also hitting the game underneath
   overlay.addEventListener('mousedown', (e) => e.stopPropagation());
