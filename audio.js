@@ -9,9 +9,14 @@ const Sound = (() => {
   let musicOn = true;
   try { musicOn = JSON.parse(localStorage.getItem('paintRunner.music') ?? 'true'); } catch (e) { /* ignore */ }
 
-  // Browsers only allow audio after a user gesture, so this runs on the first key/click.
+  // Browsers only allow audio after a user gesture, so this runs on every key press / click.
   function init() {
-    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    unlockTracks();
+    if (ctx) {
+      if (ctx.state === 'suspended') ctx.resume();
+      applyMusic();  // retry anything the browser blocked earlier
+      return;
+    }
     try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
     master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
@@ -60,7 +65,9 @@ const Sound = (() => {
 
   // ---------- music: two MP3 tracks, menu theme and level background ----------
   const TRACKS = { theme: 'music/theme.mp3', level: 'music/level.mp3' };
-  const MUSIC_VOLUME = 0.55, FADE_MS = 700;
+  // The level track sits under the sound effects; the menu theme can be fuller.
+  const TRACK_VOLUME = { theme: 0.5, level: 0.22 };
+  const FADE_MS = 700;
   const players = {};
   let wanted = 'theme';   // which track the game currently wants
   let fadeTimer = null;
@@ -76,16 +83,33 @@ const Sound = (() => {
     return players[name];
   }
 
+  // Some browsers (Safari especially) only let an audio element play if play() was first
+  // called during a click or key press. Start every track silently inside the first
+  // gesture so the level track can start later from the game loop.
+  let unlocked = false;
+  function unlockTracks() {
+    if (unlocked) return;
+    unlocked = true;
+    for (const name of Object.keys(TRACKS)) {
+      const a = track(name);
+      if (!a.paused) continue;
+      a.volume = 0;
+      a.play()
+        .then(() => { if (a.volume === 0 && name !== wanted) a.pause(); })
+        .catch(() => { unlocked = false; }); // try again on the next gesture
+    }
+  }
+
   // Fades the wanted track in and every other track out.
   function applyMusic() {
     if (!ctx) return;  // nothing may play before the first click / key press
     clearInterval(fadeTimer);
-    const target = (name) => (musicOn && name === wanted && !document.hidden ? MUSIC_VOLUME : 0);
+    const target = (name) => (musicOn && name === wanted && !document.hidden ? TRACK_VOLUME[name] : 0);
     const all = Object.keys(TRACKS).map((n) => [n, track(n)]);
     for (const [name, a] of all) {
       if (target(name) > 0 && a.paused) a.play().catch(() => { });
     }
-    const step = MUSIC_VOLUME / (FADE_MS / 30);
+    const step = 0.5 / (FADE_MS / 30);
     fadeTimer = setInterval(() => {
       let done = true;
       for (const [name, a] of all) {
