@@ -10,7 +10,7 @@
 
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const avatar = (url) => (url ? `<img class="avatar" src="${esc(url)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : '<span class="avatar"></span>');
-  const fmtTime = (t) => (t === undefined || t === null || Number.isNaN(t) ? '—' : `${t.toFixed(1)}s`);
+  const fmtTime = (t) => (t === undefined || t === null || Number.isNaN(t) ? '—' : `${t.toFixed(2)}s`);
   const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
   const ago = (ms) => {
     if (!ms) return '—';

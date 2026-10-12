@@ -748,7 +748,7 @@
     ctx.fillRect(0, 0, W, 30);
     text(`${game.levelIdx + 1} / ${LEVELS.length}   ${lv.name}`, 12, 15, 15, '#fff');
     w.cans.forEach((can, i) => drawCan(W / 2 - 22 + i * 22, 16, 0.75, can.got, can.got ? COLOR_HEX[ALL_COLORS[i]] : '#55555c'));
-    text(`${(w.frame / 60).toFixed(1)}s`, W - 12, 15, 15, '#fff', 'right');
+    text(`${(w.frame / 60).toFixed(2)}s`, W - 12, 15, 15, '#fff', 'right');
     text(`R restart · Esc menu · M music ${Sound.musicOn ? 'on' : 'off'} · F full screen`, W - 80, 15, 12, 'rgba(255,255,255,0.55)', 'right', 500);
 
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -834,7 +834,7 @@
     });
     const best = game.best[lv.name];
     const st = game.stars[lv.name] || 0;
-    text(best ? `${'★'.repeat(st)}${'☆'.repeat(3 - st)}   Best: ${best.toFixed(1)}s` : 'Not cleared yet', W / 2 + 40, 412, 13, best ? '#ffd166' : 'rgba(255,255,255,0.65)', 'center', 600);
+    text(best ? `${'★'.repeat(st)}${'☆'.repeat(3 - st)}   Best: ${best.toFixed(2)}s` : 'Not cleared yet', W / 2 + 40, 412, 13, best ? '#ffd166' : 'rgba(255,255,255,0.65)', 'center', 600);
     text(`★ ${totalStars()} / ${LEVELS.length * 3}`, W - 20, 24, 16, INK, 'right', 800);
     if (Math.floor(game.tick / 30) % 2 === 0) text('Press ENTER or click to play  ·  L for leaderboards', W / 2, 462, 16, INK, 'center', 700);
 
@@ -867,7 +867,7 @@
         drawPanel([
           ['Level complete!', 48, '#fff', 900],
           [`${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}${r.newStars ? '   new record!' : ''}`, 34, '#ffd166', 900],
-          [`Time ${r.time.toFixed(1)}s${r.isBest ? '  ★ new best' : ''}`, 22, r.isBest ? '#ffd166' : '#fff', 600],
+          [`Time ${r.time.toFixed(2)}s${r.isBest ? '  ★ new best' : ''}`, 22, r.isBest ? '#ffd166' : '#fff', 600],
           [`Paint thrown: ${r.throws}   ·   Falls: ${r.deaths}`, 18, 'rgba(255,255,255,0.75)', 500],
           cloudLine(r),
           ['ENTER: next level   ·   R: retry   ·   Esc: menu', 16, 'rgba(255,255,255,0.6)', 500],
