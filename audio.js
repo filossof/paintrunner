@@ -1,12 +1,11 @@
 'use strict';
 
 // ============================================================
-//  Sound: procedural chiptune music + sound effects (Web Audio).
-//  No audio files - everything is synthesized on the fly.
+//  Sound: music tracks (music/*.mp3) + synthesized sound effects (Web Audio).
 // ============================================================
 
 const Sound = (() => {
-  let ctx = null, master, musicBus, sfxBus, noiseBuf;
+  let ctx = null, master, sfxBus, noiseBuf;
   let musicOn = true;
   try { musicOn = JSON.parse(localStorage.getItem('paintRunner.music') ?? 'true'); } catch (e) { /* ignore */ }
 
@@ -15,15 +14,15 @@ const Sound = (() => {
     if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
     try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
     master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
-    musicBus = ctx.createGain(); musicBus.gain.value = 0.55; musicBus.connect(master);
     sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) ctx.suspend(); else ctx.resume();
+      applyMusic();
     });
-    if (musicOn) startMusic();
+    applyMusic();
   }
 
   // ---------- building blocks ----------
@@ -59,72 +58,60 @@ const Sound = (() => {
     src.start(t0, Math.random() * 0.5); src.stop(t0 + dur + 0.02);
   }
 
-  const midi = (m) => 440 * Math.pow(2, (m - 69) / 12);
-  const SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
-  const note = (n) => 12 * (Number(n.slice(-1)) + 1) + SEMI[n[0]] + (n[1] === '#' ? 1 : 0);
+  // ---------- music: two MP3 tracks, menu theme and level background ----------
+  const TRACKS = { theme: 'music/theme.mp3', level: 'music/level.mp3' };
+  const MUSIC_VOLUME = 0.55, FADE_MS = 700;
+  const players = {};
+  let wanted = 'theme';   // which track the game currently wants
+  let fadeTimer = null;
 
-  // ---------- music ----------
-  const BPM = 120, STEP = 60 / BPM / 4;  // 16th notes
-  const CHORDS = {
-    C: { root: 48, third: 4 }, G: { root: 43, third: 4 }, Am: { root: 45, third: 3 }, F: { root: 41, third: 4 },
-  };
-  const PROGRESSION = ['C', 'G', 'Am', 'F', 'Am', 'F', 'C', 'G'];
-  // Lead melody in 8th notes, one string per bar ('-' = rest).
-  const MELODY = [
-    'E5 - G5 A5 G5 - E5 D5', 'D5 - G4 - B4 D5 - -', 'C5 - E5 A5 G5 - E5 C5', 'D5 - C5 A4 C5 - - -',
-    'E5 - C5 E5 A5 - G5 E5', 'F5 - E5 C5 D5 - C5 A4', 'G5 - E5 G5 C6 - G5 E5', 'D5 - B4 D5 G5 - F5 D5',
-  ].map((bar) => bar.split(' '));
-  const BASS = { 0: 0, 4: 0, 7: 7, 8: 12, 12: 0, 14: 7 };
-  const TOTAL_STEPS = PROGRESSION.length * 16;
-
-  let step = 0, nextTime = 0, timer = null;
-
-  function playStep(s, t) {
-    const bar = Math.floor(s / 16), inBar = s % 16;
-    const chord = CHORDS[PROGRESSION[bar]];
-    const tones = [0, chord.third, 7, 12];
-
-    if (BASS[inBar] !== undefined) {
-      tone(midi(chord.root + BASS[inBar]), 0.22, { type: 'triangle', vol: 0.16, when: t, dest: musicBus });
+  function track(name) {
+    if (!players[name]) {
+      const a = new Audio(TRACKS[name]);
+      a.loop = true;
+      a.preload = 'auto';
+      a.volume = 0;
+      players[name] = a;
     }
-    if (inBar % 2 === 0) {
-      const n = chord.root + 24 + tones[(inBar / 2) % 4];
-      tone(midi(n), 0.09, { type: 'square', vol: 0.022, when: t, dest: musicBus, filter: 1800 });
-    }
-    if (inBar % 2 === 0) {
-      const m = MELODY[bar][inBar / 2];
-      if (m !== '-') tone(midi(note(m)), 0.24, { type: 'square', vol: 0.04, when: t, dest: musicBus, filter: 3200 });
-    }
-    // drums
-    if (inBar === 0 || inBar === 8 || (inBar === 10 && bar % 2 === 1)) {
-      tone(140, 0.16, { type: 'sine', vol: 0.3, slideTo: 40, when: t, dest: musicBus });
-    }
-    if (inBar === 4 || inBar === 12) {
-      noise(0.12, { vol: 0.07, type: 'highpass', freq: 1500, when: t, dest: musicBus });
-      tone(220, 0.07, { type: 'triangle', vol: 0.05, slideTo: 120, when: t, dest: musicBus });
-    }
-    if (inBar % 2 === 1) noise(0.03, { vol: 0.025, type: 'highpass', freq: 7000, when: t, dest: musicBus });
+    return players[name];
   }
 
-  function schedule() {
-    if (nextTime < ctx.currentTime - 0.2) nextTime = ctx.currentTime + 0.05; // tab was asleep
-    while (nextTime < ctx.currentTime + 0.12) {
-      playStep(step, nextTime);
-      nextTime += STEP;
-      step = (step + 1) % TOTAL_STEPS;
+  // Fades the wanted track in and every other track out.
+  function applyMusic() {
+    if (!ctx) return;  // nothing may play before the first click / key press
+    clearInterval(fadeTimer);
+    const target = (name) => (musicOn && name === wanted && !document.hidden ? MUSIC_VOLUME : 0);
+    const all = Object.keys(TRACKS).map((n) => [n, track(n)]);
+    for (const [name, a] of all) {
+      if (target(name) > 0 && a.paused) a.play().catch(() => { });
     }
+    const step = MUSIC_VOLUME / (FADE_MS / 30);
+    fadeTimer = setInterval(() => {
+      let done = true;
+      for (const [name, a] of all) {
+        const t = target(name);
+        const v = a.volume < t ? Math.min(t, a.volume + step) : Math.max(t, a.volume - step);
+        a.volume = v;
+        if (v !== t) done = false;
+        if (v === 0 && !a.paused) a.pause();
+      }
+      if (done) clearInterval(fadeTimer);
+    }, 30);
   }
-  function startMusic() {
-    if (!ctx || timer) return;
-    step = 0; nextTime = ctx.currentTime + 0.08;
-    timer = setInterval(schedule, 25);
+
+  // 'theme' on menus, 'level' while playing. Switching to the same track keeps it going.
+  function setTrack(name) {
+    if (name === wanted) return;
+    // a fresh level track starts from the top; the theme resumes where it was
+    if (name === 'level' && players.level && players.level.volume === 0) players.level.currentTime = 0;
+    wanted = name;
+    applyMusic();
   }
-  function stopMusic() { clearInterval(timer); timer = null; }
 
   function toggleMusic() {
     musicOn = !musicOn;
     try { localStorage.setItem('paintRunner.music', JSON.stringify(musicOn)); } catch (e) { /* ignore */ }
-    if (musicOn) startMusic(); else stopMusic();
+    applyMusic();
     return musicOn;
   }
 
@@ -181,7 +168,7 @@ const Sound = (() => {
   };
 
   return {
-    init, sfx, toggleMusic,
+    init, sfx, toggleMusic, setTrack,
     get musicOn() { return musicOn; },
   };
 })();

@@ -12,7 +12,7 @@ A black & white world. Throw paint to change it.
 | 🟡 Yellow | Toggle big / small |
 | 🟣 Purple | Two portals; keep your speed through them |
 
-21 levels, monsters (Inky walkers, washers and color-hat shooters), moving platforms, three paint cans (stars) per level, procedural music.
+21 levels, monsters (Inky walkers, washers and color-hat shooters), moving platforms, three paint cans (stars) per level, and a soundtrack (`music/theme.mp3` on the menu, `music/level.mp3` in levels).
 
 **Controls:** A/D move · W/Space jump · S drop / don't bounce · mouse aim · click throw · right-click wash · 1-5 or Q/E colors · R restart · L leaderboards · M music · Esc menu
 
@@ -32,7 +32,8 @@ Data lives in its own Firebase project (`paintrunner`), in Firestore collections
 | `levels.js` | All level maps, cans, monsters, platforms |
 | `world.js` | Game rules and physics (no rendering, runs in Node for tests) |
 | `main.js` | Input, rendering, menus |
-| `audio.js` | Procedural music and sound effects |
+| `audio.js` | Music player (menu/level tracks) and synthesized sound effects |
+| `music/` | Soundtrack MP3s |
 | `cloud.js`, `config.js` | Firebase: sign-in, leaderboards, progress sync |
 | `ui.js` | Sign-in chip and leaderboard window |
 | `stats.html`, `stats.js` | Owner-only dashboard |

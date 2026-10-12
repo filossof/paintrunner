@@ -911,6 +911,7 @@
     last = now;
     while (acc >= STEP) { update(); acc -= STEP; }
     if (typeof UI !== 'undefined') UI.setMode(game.mode);
+    Sound.setTrack(game.mode === 'play' || game.mode === 'complete' ? 'level' : 'theme');
     render();
     requestAnimationFrame(loop);
   }
