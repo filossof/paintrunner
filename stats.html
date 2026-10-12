@@ -56,6 +56,8 @@
     .funnel .row:hover .bar, .funnel .bar:hover { background: var(--bar-hover); }
     .funnel .val { position: absolute; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 700; color: var(--ink); padding-left: 6px; }
     .funnel .row { display: contents; }
+    .pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; color: var(--ink-2); font-size: 13px; flex-wrap: wrap; }
+    .pager .btn:disabled { opacity: 0.35; cursor: default; }
     #tip {
       position: fixed; pointer-events: none; z-index: 5; background: var(--ink); color: var(--bg);
       font-size: 13px; padding: 6px 10px; border-radius: 8px; opacity: 0; transition: opacity 0.08s; white-space: nowrap;
@@ -73,9 +75,9 @@
   <script src="vendor/firebase-app-compat.js"></script>
   <script src="vendor/firebase-auth-compat.js"></script>
   <script src="vendor/firebase-firestore-compat.js"></script>
-  <script src="config.js?v=6"></script>
-  <script src="cloud.js?v=6"></script>
-  <script src="levels.js?v=6"></script>
-  <script src="stats.js?v=6"></script>
+  <script src="config.js?v=7"></script>
+  <script src="cloud.js?v=7"></script>
+  <script src="levels.js?v=7"></script>
+  <script src="stats.js?v=7"></script>
 </body>
 </html>

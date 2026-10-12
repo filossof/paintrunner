@@ -135,17 +135,48 @@
 
       <section class="card">
         <h2>Recent activity</h2>
-        <p class="sub">The latest 40 attempts.</p>
-        ${runs.length ? `<div class="table-wrap"><table>
-          <thead><tr><th>When</th><th>Player</th><th>Level</th><th>Result</th><th class="num">Time</th><th class="num">Stars</th><th class="num">Deaths</th><th class="num">Throws</th></tr></thead>
-          <tbody>${runs.slice(0, 40).map((r) => `<tr>
-            <td>${ago(r.at)}</td><td>${esc(r.name)}</td><td>${r.levelIdx + 1}. ${esc(r.level)}</td>
-            <td>${r.completed ? '✅ cleared' : '🏳️ gave up'}</td>
-            <td class="num">${fmtTime(r.time)}</td><td class="num stars">${'★'.repeat(r.stars || 0)}</td>
-            <td class="num">${r.deaths}</td><td class="num">${r.throws}</td></tr>`).join('')}</tbody>
-        </table></div>` : '<p class="empty">No games played yet.</p>'}
+        <p class="sub">The latest ${Math.min(runs.length, RECENT_MAX)} attempts, newest first.</p>
+        <div id="recent"></div>
       </section>`;
+
+    recent = runs.slice(0, RECENT_MAX);
+    recentPage = 0;
+    renderRecent();
   }
+
+  // ---- recent activity: up to 200 attempts, 50 per page ----
+  const RECENT_MAX = 200, PAGE_SIZE = 50;
+  let recent = [], recentPage = 0;
+
+  function renderRecent() {
+    const box = document.getElementById('recent');
+    if (!box) return;
+    if (!recent.length) { box.innerHTML = '<p class="empty">No games played yet.</p>'; return; }
+    const pages = Math.ceil(recent.length / PAGE_SIZE);
+    const start = recentPage * PAGE_SIZE;
+    const rows = recent.slice(start, start + PAGE_SIZE);
+    const pager = pages > 1 ? `<div class="pager">
+        <button class="btn" data-page="prev" ${recentPage === 0 ? 'disabled' : ''}>◀ Newer</button>
+        <span>${start + 1}–${start + rows.length} of ${recent.length} · page ${recentPage + 1} / ${pages}</span>
+        <button class="btn" data-page="next" ${recentPage >= pages - 1 ? 'disabled' : ''}>Older ▶</button>
+      </div>` : '';
+    box.innerHTML = `<div class="table-wrap"><table>
+        <thead><tr><th>When</th><th>Player</th><th>Level</th><th>Result</th><th class="num">Time</th><th class="num">Stars</th><th class="num">Deaths</th><th class="num">Throws</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr>
+          <td title="${esc(new Date(r.at).toLocaleString())}">${ago(r.at)}</td><td>${esc(r.name)}</td><td>${r.levelIdx + 1}. ${esc(r.level)}</td>
+          <td>${r.completed ? '✅ cleared' : '🏳️ gave up'}</td>
+          <td class="num">${fmtTime(r.time)}</td><td class="num stars">${'★'.repeat(r.stars || 0)}</td>
+          <td class="num">${r.deaths}</td><td class="num">${r.throws}</td></tr>`).join('')}</tbody>
+      </table></div>${pager}`;
+  }
+
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-page]');
+    if (!b || b.disabled) return;
+    recentPage += b.dataset.page === 'next' ? 1 : -1;
+    renderRecent();
+    document.getElementById('recent').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
 
   // hover tooltip for the funnel
   document.addEventListener('mousemove', (e) => {
