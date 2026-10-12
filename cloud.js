@@ -35,6 +35,11 @@ const Cloud = (() => {
     return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0];
   }
 
+  // Saves still on their way to the server. Leaderboard reads wait for these, so you
+  // always see your own latest result.
+  let pending = Promise.resolve();
+  const track = (p) => { pending = Promise.all([pending, p.catch(() => { })]); return p; };
+
   const emit = () => listeners.forEach((fn) => { try { fn(user); } catch (e) { console.error(e); } });
 
   if (available) {
@@ -112,8 +117,12 @@ const Cloud = (() => {
     },
 
     /* Posts a completed run to the level's leaderboards and returns this player's ranks. */
-    async submitScore(r) {
-      if (!user) return null;
+    submitScore(r) {
+      if (!user) return Promise.resolve(null);
+      return track(this._submitScore(r));
+    },
+
+    async _submitScore(r) {
       const ref = scores(r.level).doc(user.uid);
       const before = await ref.get();
       const old = before.exists ? before.data() : null;
@@ -132,8 +141,13 @@ const Cloud = (() => {
 
     /* Merges local and cloud progress (best of both), saves it back, and makes sure every
        local best is on the leaderboards. Returns the merged progress. */
-    async syncProgress(local, levels) {
-      if (!user) return null;
+    /* Merges local and cloud progress into the public profile (stars ranking). Returns the merged map. */
+    saveProfile(local, levels) {
+      if (!user) return Promise.resolve(null);
+      return track(this._saveProfile(local, levels));
+    },
+
+    async _saveProfile(local, levels) {
       const ref = db.collection('pr_players').doc(user.uid);
       const snap = await ref.get();
       const cloud = snap.exists ? snap.data() : {};
@@ -155,6 +169,12 @@ const Cloud = (() => {
         unlocked: Math.max(local.unlocked || 0, cloud.unlocked || 0),
         progress: merged, totalStars, levelsCleared: Object.keys(merged).length,
       });
+      return { merged, unlocked: Math.max(local.unlocked || 0, cloud.unlocked || 0) };
+    },
+
+    async syncProgress(local, levels) {
+      if (!user) return null;
+      const { merged, unlocked } = await this.saveProfile(local, levels);
 
       // Backfill leaderboards with any local bests the cloud doesn't know about yet.
       await Promise.all(levels.map(async (l, i) => {
@@ -176,11 +196,12 @@ const Cloud = (() => {
         const p = merged[levelKey(l.name)];
         if (p) progress[l.name] = p;
       }
-      return { progress, unlocked: Math.max(local.unlocked || 0, cloud.unlocked || 0) };
+      return { progress, unlocked };
     },
 
     /* The three boards for one level. */
     async leaderboard(name, limit = 10) {
+      await pending;
       const top = async (field) => (await scores(name).orderBy(field).limit(limit).get()).docs.map((d) => d.data());
       const [fastest, perfect, efficient] = await Promise.all([top('bestTime'), top('best3Time'), top('fewestThrows')]);
       let me = null;
@@ -193,6 +214,7 @@ const Cloud = (() => {
 
     /* Overall ranking by stars collected. */
     async starBoard(limit = 20) {
+      await pending;
       const snap = await db.collection('pr_players').orderBy('totalStars', 'desc').limit(limit).get();
       return snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
     },

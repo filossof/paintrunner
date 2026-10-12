@@ -198,11 +198,11 @@
     if (stars === 3 && !(game.best3[key] <= time)) { game.best3[key] = time; store.set('best3ByName', game.best3); }
     if (!(game.fewest[key] <= w.throws)) { game.fewest[key] = w.throws; store.set('fewestByName', game.fewest); }
     game.lastResult = { time, throws: w.throws, deaths: w.deaths, isBest, stars, newStars, cloud: null };
-    postResult(game.lastResult, true);
     if (game.levelIdx + 1 > game.unlocked && game.levelIdx + 1 < LEVELS.length) {
       game.unlocked = game.levelIdx + 1;
       store.set('unlocked', game.unlocked);
     }
+    postResult(game.lastResult, true);
     game.mode = 'complete';
   }
 
@@ -216,6 +216,8 @@
     Cloud.logRun(run).catch((e) => console.warn('logRun', e.code || e));
     if (!completed) return;
     result.cloud = 'saving';
+    // keep the star ranking up to date too (total stars, levels cleared)
+    Cloud.saveProfile(localProgress(), LEVELS).catch((e) => console.warn('saveProfile', e.code || e));
     Cloud.submitScore(run)
       .then((ranks) => { result.cloud = ranks; })
       .catch((e) => { console.warn('submitScore', e); result.cloud = 'error'; });
