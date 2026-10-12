@@ -1,54 +1,14 @@
 rules_version = '2';
-// Shared by Quizzle and Paint Runner (same Firebase project). Publish the whole file in the
-// Firebase console: Firestore Database -> Rules -> Publish.
+// Paint Runner database rules. Publish in the Firebase console:
+// Firestore Database -> Rules -> paste this whole file -> Publish.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function owns(data) { return signedIn() && data.owner == request.auth.uid; }
-    // The Quizzle owner, who can open the stats page.
+    // The game owner, who can open the stats page.
     function isAdmin() {
       return signedIn() && request.auth.token.email == 'filossof@gmail.com' && request.auth.token.email_verified == true;
     }
 
-    // Quizzes: only the owner can see or change them (the Quizzle owner can also see them, for stats).
-    match /quizzes/{id} {
-      allow read: if owns(resource.data) || isAdmin();
-      allow delete: if owns(resource.data);
-      allow create: if owns(request.resource.data);
-      allow update: if owns(resource.data) && owns(request.resource.data);
-    }
-
-    // Pictures: listing is owner-only. Fetching one picture by its exact (unguessable) id is
-    // allowed for signed-in users, so a shared quiz copy can bring its pictures along.
-    match /images/{id} {
-      allow get: if signedIn();
-      allow list, delete: if owns(resource.data);
-      allow create: if owns(request.resource.data);
-      allow update: if owns(resource.data) && owns(request.resource.data);
-    }
-
-    // "Share a copy" links: open one by its exact id to copy the quiz into your own account.
-    // Shares can't be listed, so nobody can browse other people's shares.
-    match /shares/{id} {
-      allow get: if signedIn();
-      allow create: if owns(request.resource.data);
-      allow delete: if owns(resource.data);
-    }
-
-    // Profiles for the stats page: each person writes only their own.
-    match /users/{uid} {
-      allow get: if (signedIn() && request.auth.uid == uid) || isAdmin();
-      allow list: if isAdmin();
-      allow create, update: if signedIn() && request.auth.uid == uid;
-    }
-
-    // Log of hosted games, for the stats page.
-    match /games/{id} {
-      allow create: if owns(request.resource.data);
-      allow read: if isAdmin();
-    }
-
-    // ================= Paint Runner (filossof.github.io/paintrunner) =================
     // Public profiles + progress; the star ranking reads these, so anyone may read.
     match /pr_players/{uid} {
       allow read: if true;

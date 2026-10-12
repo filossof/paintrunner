@@ -22,7 +22,7 @@ A black & white world. Throw paint to change it.
 - **Leaderboards per level:** ⚡ fastest, ★★★ fastest perfect run (all 3 cans), 🎨 fewest throws, plus an overall star ranking.
 - **Owner stats:** [`stats.html`](https://filossof.github.io/paintrunner/stats.html) shows players, where people get stuck, and recent activity. Only the owner account can read that data.
 
-Data lives in Firebase Firestore in the same project as [Quizzle](https://github.com/filossof/quizzle) (`quizzle-a3132`), in collections starting with `pr_`. Who can read and write what is defined in [`firestore.rules`](firestore.rules), which contains **both** apps' rules. After changing it, paste the whole file into the Firebase console (**Firestore Database → Rules → Publish**). Keep Quizzle's copy in sync.
+Data lives in its own Firebase project (`paintrunner`), in Firestore collections starting with `pr_`. Who can read and write what is defined in [`firestore.rules`](firestore.rules); after changing it, paste the whole file into the Firebase console (**Firestore Database → Rules → Publish**).
 
 ## Files
 

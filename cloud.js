@@ -3,8 +3,7 @@
 /* ============================================================
    Cloud: Google sign-in, leaderboards and progress sync (Firebase).
 
-   Firestore layout (all collection names start with pr_ so they never
-   clash with Quizzle, which shares the project):
+   Firestore layout (Paint Runner's own Firebase project, collections prefixed pr_):
      pr_players/{uid}                      public profile + progress (for the star ranking)
      pr_private/{uid}                      email; only the admin can read it
      pr_levels/{levelKey}/pr_scores/{uid}  one row per player per level: their bests
