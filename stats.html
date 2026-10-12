@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paint Runner Stats</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+  <style>
+    :root {
+      --bg: #efece4; --surface: #ffffff; --ink: #1c1c1f; --ink-2: #55555c; --ink-3: #8a8a92;
+      --line: #d9d5ca; --grid: #ece9e1; --bar: #2f7bff; --bar-hover: #1a4fb8; --accent: #e8a400;
+      --font: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #141418; --surface: #1e1e24; --ink: #f1efe9; --ink-2: #b4b2ad; --ink-3: #85838d;
+        --line: #34343c; --grid: #2a2a31; --bar: #5b97ff; --bar-hover: #8db6ff; --accent: #ffc93c;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 var(--font); }
+    header {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 16px clamp(16px, 4vw, 40px); border-bottom: 2px solid var(--line); background: var(--surface);
+    }
+    header h1 { margin: 0; font-size: 22px; flex: 1; }
+    header a { color: var(--ink-2); }
+    main { padding: 20px clamp(16px, 4vw, 40px) 60px; max-width: 1200px; margin: 0 auto; }
+    .btn {
+      font: 700 14px var(--font); border: 2px solid var(--ink); border-radius: 999px; background: var(--surface);
+      color: var(--ink); padding: 6px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    }
+    .chip { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+    .avatar { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; background: var(--line); vertical-align: middle; flex: none; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .kpi { background: var(--surface); border: 2px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+    .kpi .v { font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .kpi .l { color: var(--ink-2); font-size: 13px; }
+    section.card { background: var(--surface); border: 2px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 24px; }
+    section.card h2 { margin: 0 0 4px; font-size: 18px; }
+    section.card .sub { margin: 0 0 14px; color: var(--ink-2); font-size: 13px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+    th { font-size: 12px; color: var(--ink-2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+    td.num, th.num { text-align: right; }
+    .muted { color: var(--ink-3); }
+    .stars { color: var(--accent); }
+    .empty, .msg { color: var(--ink-2); padding: 24px 0; text-align: center; }
+
+    /* funnel: one series, horizontal bars */
+    .funnel { display: grid; grid-template-columns: minmax(120px, 210px) 1fr; gap: 6px 12px; align-items: center; }
+    .funnel .name { font-size: 13px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .funnel .track { position: relative; height: 20px; background: linear-gradient(to right, var(--grid) 1px, transparent 1px) 0 0 / 25% 100%; }
+    .funnel .bar { height: 100%; background: var(--bar); border-radius: 0 4px 4px 0; min-width: 2px; }
+    .funnel .row:hover .bar, .funnel .bar:hover { background: var(--bar-hover); }
+    .funnel .val { position: absolute; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 700; color: var(--ink); padding-left: 6px; }
+    .funnel .row { display: contents; }
+    #tip {
+      position: fixed; pointer-events: none; z-index: 5; background: var(--ink); color: var(--bg);
+      font-size: 13px; padding: 6px 10px; border-radius: 8px; opacity: 0; transition: opacity 0.08s; white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎨 Paint Runner · Stats</h1>
+    <span id="who"></span>
+    <a href="./">Back to the game</a>
+  </header>
+  <main id="app"><p class="msg">Loading…</p></main>
+  <div id="tip" role="tooltip"></div>
+  <script src="vendor/firebase-app-compat.js"></script>
+  <script src="vendor/firebase-auth-compat.js"></script>
+  <script src="vendor/firebase-firestore-compat.js"></script>
+  <script src="config.js?v=3"></script>
+  <script src="cloud.js?v=3"></script>
+  <script src="levels.js?v=3"></script>
+  <script src="stats.js?v=3"></script>
+</body>
+</html>

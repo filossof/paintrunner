@@ -1,0 +1,87 @@
+rules_version = '2';
+// Shared by Quizzle and Paint Runner (same Firebase project). Publish the whole file in the
+// Firebase console: Firestore Database -> Rules -> Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owns(data) { return signedIn() && data.owner == request.auth.uid; }
+    // The Quizzle owner, who can open the stats page.
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == 'filossof@gmail.com' && request.auth.token.email_verified == true;
+    }
+
+    // Quizzes: only the owner can see or change them (the Quizzle owner can also see them, for stats).
+    match /quizzes/{id} {
+      allow read: if owns(resource.data) || isAdmin();
+      allow delete: if owns(resource.data);
+      allow create: if owns(request.resource.data);
+      allow update: if owns(resource.data) && owns(request.resource.data);
+    }
+
+    // Pictures: listing is owner-only. Fetching one picture by its exact (unguessable) id is
+    // allowed for signed-in users, so a shared quiz copy can bring its pictures along.
+    match /images/{id} {
+      allow get: if signedIn();
+      allow list, delete: if owns(resource.data);
+      allow create: if owns(request.resource.data);
+      allow update: if owns(resource.data) && owns(request.resource.data);
+    }
+
+    // "Share a copy" links: open one by its exact id to copy the quiz into your own account.
+    // Shares can't be listed, so nobody can browse other people's shares.
+    match /shares/{id} {
+      allow get: if signedIn();
+      allow create: if owns(request.resource.data);
+      allow delete: if owns(resource.data);
+    }
+
+    // Profiles for the stats page: each person writes only their own.
+    match /users/{uid} {
+      allow get: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Log of hosted games, for the stats page.
+    match /games/{id} {
+      allow create: if owns(request.resource.data);
+      allow read: if isAdmin();
+    }
+
+    // ================= Paint Runner (filossof.github.io/paintrunner) =================
+    // Public profiles + progress; the star ranking reads these, so anyone may read.
+    match /pr_players/{uid} {
+      allow read: if true;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && request.resource.data.totalStars is int
+        && request.resource.data.totalStars >= 0 && request.resource.data.totalStars <= 300;
+    }
+
+    // Emails stay private: only the owner (stats page) can read them.
+    match /pr_private/{uid} {
+      allow read: if isAdmin();
+      allow create, update: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Leaderboards: one row per player per level. Public to read; each player writes only
+    // their own row, with sane values.
+    match /pr_levels/{level}/pr_scores/{uid} {
+      allow read: if true;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && request.resource.data.bestTime is number && request.resource.data.bestTime >= 1
+        && request.resource.data.bestStars is int
+        && request.resource.data.bestStars >= 0 && request.resource.data.bestStars <= 3
+        && (!('best3Time' in request.resource.data) || (request.resource.data.best3Time is number && request.resource.data.best3Time >= 1))
+        && (!('fewestThrows' in request.resource.data) || (request.resource.data.fewestThrows is int && request.resource.data.fewestThrows >= 0));
+    }
+
+    // Every finished or abandoned attempt, for the stats page.
+    match /pr_runs/{id} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow read: if isAdmin();
+    }
+  }
+}
