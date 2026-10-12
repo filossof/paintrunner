@@ -85,21 +85,28 @@ function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
 
 class World {
   constructor(def) {
-    this.level = parseLevel(def);
-    this.platforms = this.level.platforms;
+    this.def = def;
     this.events = [];
+    this.deaths = 0;    // counts across restarts
+    this.restart();
+  }
+
+  // A fresh attempt: timer, paint, throws, platforms, monsters and cans all reset.
+  // (Dying restarts the whole level, so painting before a death can't help the next run.)
+  restart() {
+    this.level = parseLevel(this.def);
+    this.platforms = this.level.platforms;
     this.blobs = [];
     this.tick = 0;      // drives platforms; keeps running while dead
     this.frame = 0;     // level timer
     this.throws = 0;
-    this.deaths = 0;
     this.state = 'play';
     this.timer = 0;
-    this.portals = [];  // up to two { c, r, face }; the oldest is replaced first; cleared on death
+    this.portals = [];  // up to two { c, r, face }; the oldest is replaced first
     this.respawn();
   }
 
-  // Start (or restart after dying): player, monsters and cans reset. Paint stays.
+  // Puts the player, monsters and cans back at their starting state.
   respawn() {
     this.spawnPlayer();
     this.portals = [];  // dying closes your portals
@@ -711,7 +718,7 @@ class World {
     this.stepPlatforms();
     this.stepMonsters();
     if (this.state === 'dead') {
-      if (++this.timer > 40) { this.state = 'play'; this.respawn(); this.events.push({ type: 'respawn' }); }
+      if (++this.timer > 40) { this.restart(); this.events.push({ type: 'respawn' }); }
       return;
     }
     if (this.state === 'won') { this.timer++; return; }
