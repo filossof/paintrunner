@@ -38,6 +38,16 @@ service cloud.firestore {
         && (!('fewestThrows' in request.resource.data) || (request.resource.data.fewestThrows is int && request.resource.data.fewestThrows >= 0));
     }
 
+    // Play sessions (how long people actually play), for the stats page.
+    match /pr_sessions/{id} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.seconds is int && request.resource.data.seconds >= 0;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.seconds is int && request.resource.data.seconds >= 0;
+      allow read: if isAdmin();
+    }
+
     // Every finished or abandoned attempt, for the stats page.
     match /pr_runs/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid;

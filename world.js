@@ -95,6 +95,7 @@ class World {
     this.def = def;
     this.events = [];
     this.deaths = 0;    // counts across restarts
+    this.playFrames = 0; // time spent in this level across every attempt (for stats)
     this.restart();
   }
 
@@ -758,6 +759,7 @@ class World {
     }
     if (this.state === 'won') { this.timer++; return; }
     this.frame++;
+    this.playFrames++;
     this.stepPlayer(inp);
     this.checkHazards();
   }

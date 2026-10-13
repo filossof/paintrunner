@@ -229,7 +229,7 @@
   function postResult(result, completed) {
     if (!online() || !Cloud.user) { result.cloud = online() ? 'signin' : null; return; }
     const lv = LEVELS[game.levelIdx];
-    const run = { level: lv.name, levelIdx: game.levelIdx, completed, time: result.time, stars: result.stars, throws: result.throws, deaths: result.deaths };
+    const run = { level: lv.name, levelIdx: game.levelIdx, completed, time: result.time, stars: result.stars, throws: result.throws, deaths: result.deaths, played: game.world ? game.world.playFrames / 60 : result.time };
     Cloud.logRun(run).catch((e) => console.warn('logRun', e.code || e));
     if (!completed) return;
     result.cloud = 'saving';
@@ -246,6 +246,16 @@
     if (!w || w.state === 'won' || w.frame < 120) return;
     postResult({ time: w.frame / 60, stars: w.cansCollected, throws: w.throws, deaths: w.deaths }, false);
   }
+
+  // ---- play time (for the owner's stats): time in a level with the tab visible ----
+  const playLog = { seconds: 0, levels: new Set(), lastLevel: '' };
+  function savePlayTime() {
+    if (!online() || !Cloud.user) return;
+    Cloud.saveSession({ seconds: playLog.seconds, levels: playLog.levels.size, lastLevel: playLog.lastLevel });
+  }
+  setInterval(savePlayTime, 30000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) savePlayTime(); });
+  window.addEventListener('pagehide', savePlayTime);
 
   function cloudLine(r) {
     const c = r.cloud;
@@ -346,6 +356,11 @@
       if (mouse.down || mouse.right) w.throwPaint(mouse.x, mouse.y, wash ? NONE : game.color);
 
       w.step(inp);
+      if (!document.hidden) {
+        playLog.seconds += 1 / 60;
+        playLog.levels.add(LEVELS[game.levelIdx].name);
+        playLog.lastLevel = LEVELS[game.levelIdx].name;
+      }
       const pl = w.player;
       const dist = pl.cling === 1 || pl.cling === -1 ? Math.abs(pl.vy) : Math.abs(pl.vx);
       runPhase = (runPhase + dist / (24 * pl.h / 40)) % 1;

@@ -8,6 +8,7 @@
      pr_private/{uid}                      email; only the admin can read it
      pr_levels/{levelKey}/pr_scores/{uid}  one row per player per level: their bests
      pr_runs/{autoId}                      every finished or abandoned attempt (admin stats)
+     pr_sessions/{id}                      one per visit: how long the player actually played (admin stats)
 
    The game never depends on this: if Firebase can't be reached, or the rules
    haven't been published yet, everything keeps working locally.
@@ -39,6 +40,8 @@ const Cloud = (() => {
   // always see your own latest result.
   let pending = Promise.resolve();
   const track = (p) => { pending = Promise.all([pending, p.catch(() => { })]); return p; };
+
+  const session = { id: null, uid: null, startedAt: 0, base: 0, saved: false };
 
   const emit = () => listeners.forEach((fn) => { try { fn(user); } catch (e) { console.error(e); } });
 
@@ -140,8 +143,29 @@ const Cloud = (() => {
         uid: user.uid, name: publicName(user),
         level: run.level, levelIdx: run.levelIdx, completed: !!run.completed,
         time: round2(run.time), stars: run.stars || 0, throws: run.throws || 0, deaths: run.deaths || 0,
+        played: round2(run.played || run.time || 0),
         at: Date.now(),
       }));
+    },
+
+    /* Play time for this visit. `seconds` counts only time spent in a level with the tab
+       visible. A session belongs to whoever is signed in; signing in part-way starts a new one. */
+    saveSession(d) {
+      if (!user) return Promise.resolve();
+      if (session.uid !== user.uid) {
+        session.uid = user.uid;
+        session.id = `${user.uid.slice(0, 8)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+        session.startedAt = Date.now();
+        session.base = d.seconds;
+      }
+      const seconds = Math.round(d.seconds - session.base);
+      if (seconds <= 0 && !session.saved) return Promise.resolve();
+      session.saved = true;
+      return db.collection('pr_sessions').doc(session.id).set({
+        uid: user.uid, name: publicName(user),
+        startedAt: session.startedAt, lastBeat: Date.now(),
+        seconds, levels: d.levels, lastLevel: d.lastLevel || '',
+      }).catch((e) => console.warn('session', e.code || e));
     },
 
     /* Posts a completed run to the level's leaderboards and returns this player's ranks. */
@@ -253,16 +277,24 @@ const Cloud = (() => {
 
     // ---- admin dashboard ----
     async adminData() {
-      const [players, privates, runs] = await Promise.all([
+      const [players, privates, runs, sessions] = await Promise.all([
         db.collection('pr_players').get(),
         db.collection('pr_private').get(),
         db.collection('pr_runs').orderBy('at', 'desc').limit(5000).get(),
+        db.collection('pr_sessions').orderBy('lastBeat', 'desc').limit(5000).get().catch((e) => {
+          console.warn('sessions', e.code || e); return { docs: [], error: e.code || String(e) };
+        }),
       ]);
       // Someone who signed in but never synced only has a private row, so merge both.
       const byUid = {};
       players.docs.forEach((d) => { byUid[d.id] = { uid: d.id, ...d.data() }; });
       privates.docs.forEach((d) => { byUid[d.id] = { uid: d.id, ...(byUid[d.id] || {}), ...d.data() }; });
-      return { players: Object.values(byUid), runs: runs.docs.map((d) => d.data()) };
+      return {
+        players: Object.values(byUid),
+        runs: runs.docs.map((d) => d.data()),
+        sessions: sessions.docs.map((d) => d.data()),
+        sessionsError: sessions.error || null,
+      };
     },
   };
 })();
