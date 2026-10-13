@@ -7,7 +7,10 @@
 //  o = { s, col, t, run (0..1 step phase), moving (0..1), air (bool),
 //        face (1 | -1), squash }
 //
-//  `stars` is how many stars (paint cans) unlock the character.
+//  `share` is the part of all the game's stars (3 per level) needed to unlock the
+//  character; `stars` turns that into a number, rounded to a multiple of 5, so the
+//  thresholds keep making sense when levels are added. With 45 levels (135 stars):
+//  ninja 15, paintbrush 40, little artist 70, crayon 100, paint drop 135 (every star).
 // ============================================================
 
 const CHARACTERS = (() => {
@@ -19,6 +22,8 @@ const CHARACTERS = (() => {
     ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
+  // stars needed for a share of the whole game's stars, rounded to a multiple of 5
+  const starsFor = (share) => Math.round((share * LEVELS.length * 3) / 5) * 5;
   const blink = (t) => ((t * 0.55) % 3.2) < 0.12;
 
   // two ink feet that swing while running and tuck while airborne
@@ -44,7 +49,7 @@ const CHARACTERS = (() => {
 
   return [
     {
-      id: 'blob', name: 'Ink blob', stars: 0,
+      id: 'blob', name: 'Ink blob', share: 0, get stars() { return starsFor(this.share); },
       blurb: 'A soft ink blob with a paint scarf.',
       draw(ctx, o) {
         const s = o.s;
@@ -62,7 +67,7 @@ const CHARACTERS = (() => {
       },
     },
     {
-      id: 'ninja', name: 'Ink ninja', stars: 10,
+      id: 'ninja', name: 'Ink ninja', share: 0.1, get stars() { return starsFor(this.share); },
       blurb: 'Headband tails that stream behind every jump.',
       draw(ctx, o) {
         const s = o.s;
@@ -83,7 +88,7 @@ const CHARACTERS = (() => {
       },
     },
     {
-      id: 'brush', name: 'Paintbrush', stars: 20,
+      id: 'brush', name: 'Paintbrush', share: 0.3, get stars() { return starsFor(this.share); },
       blurb: 'Bristle hair dipped in your paint.',
       draw(ctx, o) {
         const s = o.s;
@@ -119,7 +124,7 @@ const CHARACTERS = (() => {
       },
     },
     {
-      id: 'artist', name: 'Little artist', stars: 30,
+      id: 'artist', name: 'Little artist', share: 0.5, get stars() { return starsFor(this.share); },
       blurb: 'A beret in your color and a splattered apron.',
       draw(ctx, o) {
         const s = o.s;
@@ -152,7 +157,7 @@ const CHARACTERS = (() => {
       },
     },
     {
-      id: 'crayon', name: 'Crayon', stars: 40,
+      id: 'crayon', name: 'Crayon', share: 0.75, get stars() { return starsFor(this.share); },
       blurb: 'A chunky crayon in whatever color you hold.',
       draw(ctx, o) {
         const s = o.s;
@@ -180,7 +185,7 @@ const CHARACTERS = (() => {
       },
     },
     {
-      id: 'drop', name: 'Paint drop', stars: 50,
+      id: 'drop', name: 'Paint drop', share: 1, get stars() { return starsFor(this.share); },
       blurb: 'A jelly drop of ink with a paint-dipped tip.',
       draw(ctx, o) {
         const s = o.s;
