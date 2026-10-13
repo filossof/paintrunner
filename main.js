@@ -104,6 +104,7 @@
     unlocked: 0,                                // set by refreshUnlocked() from cleared levels
     best: store.get('bestByName', {}),
     stars: store.get('starsByName', {}),
+    character: store.get('character', 'blob'),  // which hero you play as (see characters.js)
     best3: store.get('best3ByName', {}),        // fastest time with all 3 cans
     fewest: store.get('fewestByName', {}),      // fewest paint throws
     menuIdx: 0,
@@ -123,7 +124,7 @@
 
   let particles = [];
   let squash = 1;
-  let scarf = [];
+  let runPhase = 0;   // where the feet are in their step cycle
   let prevJumpHeld = false;
 
   function startLevel(i) {
@@ -132,7 +133,6 @@
     game.mode = 'play';
     game.color = LEVELS[i].colors[0];
     particles = [];
-    scarf = [];
     squash = 1;
   }
 
@@ -190,7 +190,6 @@
           sfx.teleport();
           burst(ev.fx, ev.fy, COLOR_HEX[PURPLE], 16, 4, 3);
           burst(ev.x, ev.y, COLOR_HEX[PURPLE], 16, 4, 3);
-          scarf = [];
           break;
         case 'win':
           sfx.win();
@@ -209,11 +208,15 @@
     const isBest = !prev || time < prev;
     if (isBest) { game.best[key] = time; store.set('bestByName', game.best); }
     const stars = w.cansCollected;
+    const starsBefore = totalStars();
     const newStars = stars > (game.stars[key] || 0);
     if (newStars) { game.stars[key] = stars; store.set('starsByName', game.stars); }
     if (stars === 3 && !(game.best3[key] <= time)) { game.best3[key] = time; store.set('best3ByName', game.best3); }
     if (!(game.fewest[key] <= w.throws)) { game.fewest[key] = w.throws; store.set('fewestByName', game.fewest); }
-    game.lastResult = { time, throws: w.throws, deaths: w.deaths, isBest, stars, newStars, cloud: null };
+    const starsAfter = totalStars();
+    const unlockedNow = CHARACTERS.filter((c) => c.stars > starsBefore && c.stars <= starsAfter);
+    game.lastResult = { time, throws: w.throws, deaths: w.deaths, isBest, stars, newStars, cloud: null, unlockedNow };
+    if (unlockedNow.length) setTimeout(() => sfx.grow(), 400);
     refreshUnlocked();
     store.set('unlocked', game.unlocked);
     postResult(game.lastResult, true);
@@ -291,6 +294,11 @@
 
     if (tapped('KeyM')) showToast(Sound.toggleMusic() ? '♪ Music on' : '♪ Music off');
     if (tapped('KeyF')) toggleFullscreen();
+    if (tapped('KeyC') && (game.mode === 'title' || game.mode === 'complete') && typeof UI !== 'undefined') {
+      UI.openCharacters();
+      pressed.clear(); keys.clear(); mouse.down = false;
+      return;
+    }
     if (tapped('KeyL') && game.mode !== 'play' && typeof UI !== 'undefined') {
       UI.openLeaderboard(game.mode === 'title' ? game.menuIdx : game.levelIdx);
       pressed.clear(); keys.clear(); mouse.down = false;
@@ -338,6 +346,9 @@
       if (mouse.down || mouse.right) w.throwPaint(mouse.x, mouse.y, wash ? NONE : game.color);
 
       w.step(inp);
+      const pl = w.player;
+      const dist = pl.cling === 1 || pl.cling === -1 ? Math.abs(pl.vy) : Math.abs(pl.vx);
+      runPhase = (runPhase + dist / (24 * pl.h / 40)) % 1;
       handleEvents(w);
       if (w.state === 'won' && w.timer > 70) completeLevel();
     }
@@ -761,42 +772,23 @@
   function drawPlayer(w) {
     const p = w.player;
     if (w.state === 'dead') return;
-    const k = p.h / 40; // 1 when big, ~0.45 when small
-    const cx = p.x + p.w / 2;
-
-    // scarf trail in the current color
-    scarf.unshift({ x: cx - p.face * 4 * k, y: p.y + 12 * k });
-    if (scarf.length > 9) scarf.pop();
-    ctx.strokeStyle = COLOR_HEX[game.color];
-    ctx.lineWidth = Math.max(2.5, 6 * k);
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    scarf.forEach((s, i) => {
-      const sx = s.x - p.face * i * 1.5 * k, sy = s.y + Math.sin(game.tick * 0.3 + i) * 1.2;
-      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
-    });
-    ctx.stroke();
-
-    // body with squash & stretch
-    const sy = p.cling ? 1 : squash, sxs = 1 / sy;
-    const bw = p.w * sxs, bh = p.h * sy;
-    const by = p.cling === 2 ? p.y : p.y + p.h - bh;
-    ctx.fillStyle = INK;
-    roundRect(cx - bw / 2, by, bw, bh, Math.max(3, 8 * k));
-    ctx.fill();
-
-    // eyes
-    const lookX = p.cling === -1 || p.cling === 1 ? p.cling : p.face;
-    const ey = by + 9 * k + (p.cling === 2 ? 10 * k : 0);
-    const ew = Math.max(2, 4 * k), eh = Math.max(3, 7 * k);
-    const blink = (game.tick % 200) < 6 ? 0.2 : 1;
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(cx - 6 * k + lookX * 3 * k, ey, ew, eh * blink);
-    ctx.fillRect(cx + 2 * k + lookX * 3 * k, ey, ew, eh * blink);
-
-    // paint-stained hand
-    ctx.fillStyle = COLOR_HEX[game.color];
-    ctx.beginPath(); ctx.arc(cx + p.face * (bw / 2), by + bh * 0.6, Math.max(2, 4 * k), 0, Math.PI * 2); ctx.fill();
+    const k = p.h / 40;                       // 1 when big, ~0.45 when small
+    const wall = p.cling === 1 || p.cling === -1;
+    const moving = p.cling ? (Math.abs(p.vx) + Math.abs(p.vy) > 0.3 ? 1 : 0)
+      : p.grounded ? Math.min(1, Math.abs(p.vx) / RUN) : 0;
+    const o = {
+      s: k, col: COLOR_HEX[game.color], t: game.tick / 60, run: runPhase, moving,
+      air: !p.grounded && p.cling !== 2, face: wall ? p.cling : p.face, squash: p.cling ? 1 : squash,
+    };
+    ctx.save();
+    if (p.cling === 2) {                      // hanging from a green ceiling: upside down, feet on the ceiling
+      ctx.translate(p.x + p.w / 2, p.y);
+      ctx.scale(1, -1);
+    } else {
+      ctx.translate(p.x + p.w / 2, p.y + p.h);
+    }
+    currentCharacter().draw(ctx, o);
+    ctx.restore();
   }
 
   function drawBlobs(w) {
@@ -931,6 +923,12 @@
       text(word, W / 2, y + bob, 96, '#fff', 'center', 900);
     }
     text('Throw paint. Change the world.', W / 2, 330, 20, INK, 'center', 600);
+    // your hero, standing next to the level picker
+    ctx.save();
+    ctx.translate(W / 2 - 280, 418);
+    currentCharacter().draw(ctx, { s: 1.5, col: COLOR_HEX[ALL_COLORS[Math.floor(game.tick / 90) % ALL_COLORS.length]], t: game.tick / 60, run: 0, moving: 0, air: false, face: 1, squash: 1 + Math.sin(game.tick * 0.05) * 0.02 });
+    ctx.restore();
+    text(currentCharacter().name, W / 2 - 280, 434, 12, INK, 'center', 700);
 
     const lv = LEVELS[game.menuIdx];
     ctx.fillStyle = INK;
@@ -945,7 +943,7 @@
     const st = game.stars[lv.name] || 0;
     text(best ? `${'★'.repeat(st)}${'☆'.repeat(3 - st)}   Best: ${best.toFixed(2)}s` : 'Not cleared yet', W / 2 + 40, 412, 13, best ? '#ffd166' : 'rgba(255,255,255,0.65)', 'center', 600);
     text(`★ ${totalStars()} / ${LEVELS.length * 3}`, W - 20, 24, 16, INK, 'right', 800);
-    if (Math.floor(game.tick / 30) % 2 === 0) text('Press ENTER or click to play  ·  L for leaderboards', W / 2, 462, 16, INK, 'center', 700);
+    if (Math.floor(game.tick / 30) % 2 === 0) text('Press ENTER or click to play  ·  L leaderboards  ·  C characters', W / 2, 462, 16, INK, 'center', 700);
 
     text('A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen', W / 2, H - 22, 12, INK, 'center', 500);
     if (game.toast) text(game.toast.str, W / 2, 30, 14, INK, 'center', 600);
@@ -953,6 +951,20 @@
 
   function totalStars() {
     return LEVELS.reduce((n, l) => n + (game.stars[l.name] || 0), 0);
+  }
+
+  // ---- characters ----
+  const isUnlocked = (c) => totalStars() >= c.stars;
+  function currentCharacter() {
+    const c = CHARACTERS.find((x) => x.id === game.character);
+    return c && isUnlocked(c) ? c : CHARACTERS[0];
+  }
+  function setCharacter(id) {
+    const c = CHARACTERS.find((x) => x.id === id);
+    if (!c || !isUnlocked(c)) return false;
+    game.character = id;
+    store.set('character', id);
+    return true;
   }
 
   function drawPanel(lines) {
@@ -980,6 +992,9 @@
           [`Time ${r.time.toFixed(2)}s${r.isBest ? '  ★ new best' : ''}`, 22, r.isBest ? '#ffd166' : '#fff', 600],
           [`Paint thrown: ${r.throws}   ·   Falls: ${r.deaths}`, 18, 'rgba(255,255,255,0.75)', 500],
           cloudLine(r),
+          r.unlockedNow && r.unlockedNow.length
+            ? [`New character unlocked: ${r.unlockedNow.map((c) => c.name).join(' & ')}!  Press C to try it`, 17, '#7cf29c', 800]
+            : ['', 14, '#fff', 500],
           ['ENTER: next level   ·   R: retry   ·   Esc: menu', 16, 'rgba(255,255,255,0.6)', 500],
         ]);
         [0, 1, 2].forEach((i) => drawCan(W / 2 - 56 + i * 56, 246, 1.6, i < r.stars, COLOR_HEX[ALL_COLORS[i]]));
@@ -1005,6 +1020,10 @@
     UI.init({
       toast: showToast,
       toggleFullscreen,
+      characters: () => CHARACTERS.map((c) => ({ ...c, unlocked: isUnlocked(c), selected: c === currentCharacter() })),
+      setCharacter,
+      totalStars,
+      paintColors: () => ALL_COLORS.map((c) => COLOR_HEX[c]),
       currentLevel: () => (game.mode === 'title' ? game.menuIdx : game.levelIdx),
       localProgress,
       applyProgress,

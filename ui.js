@@ -30,6 +30,7 @@ const UI = (() => {
       ? `<span class="chip" title="${esc(u.email || '')}">${avatar(u.photoURL)}<span>${esc((u.displayName || 'Painter').split(' ')[0])}</span><button class="out" data-act="signout">Sign out</button></span>`
       : `<button class="btn" data-act="signin">${GOOGLE_G}<span>Sign in with Google</span></button>`;
     const left = `<button class="btn" data-act="boards">🏆 Leaderboards <small>(L)</small></button>` +
+      `<button class="btn" data-act="chars">🎭 Characters <small>(C)</small></button>` +
       `<button class="btn" data-act="full" title="Full screen (F)">⛶ Full screen <small>(F)</small></button>` +
       (Cloud.isAdmin ? `<a class="btn small" href="stats.html" target="_blank" rel="noopener">📊 Stats</a>` : '');
     overlay.innerHTML = `<div class="corner left">${left}</div><div class="corner">${right}</div>`;
@@ -41,6 +42,7 @@ const UI = (() => {
     if (act === 'signout') { await Cloud.signOut(); api.toast('Signed out'); }
     if (act === 'boards') openLeaderboard(api.currentLevel());
     if (act === 'full') api.toggleFullscreen();
+    if (act === 'chars') openCharacters();
   });
   // keep clicks on the overlay from also hitting the game underneath
   overlay.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -111,6 +113,71 @@ const UI = (() => {
   function close() {
     if (modal) modal.remove();
     modal = null;
+    cancelAnimationFrame(charAnim);
+  }
+
+  // ---------- character picker ----------
+  let charAnim = 0;
+  function openCharacters() {
+    if (modal) close();
+    modal = document.createElement('div');
+    modal.className = 'modal-back';
+    modal.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ch-title">
+        <div class="modal-head">
+          <h2 id="ch-title">🎭 Characters</h2>
+          <span class="star-count"></span>
+          <button class="close" data-act="close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body"><div class="chars"></div>
+          <p class="note">Collect paint cans to earn stars. More stars unlock more characters.</p></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) return close();
+      const t = e.target.closest('[data-act],[data-char]');
+      if (!t) return;
+      if (t.dataset.act === 'close') return close();
+      if (t.dataset.char && api.setCharacter(t.dataset.char)) { renderChars(); api.toast('Character selected'); }
+    });
+    renderChars();
+    modal.querySelector('.close').focus();
+    const colors = api.paintColors();
+    const loop = (now) => {
+      if (!modal) return;
+      const t = now / 1000;
+      modal.querySelectorAll('canvas[data-id]').forEach((c, i) => {
+        const ch = CHARACTERS.find((x) => x.id === c.dataset.id);
+        const dpr = window.devicePixelRatio || 1, r = c.getBoundingClientRect();
+        if (c.width !== Math.round(r.width * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
+        const ctx = c.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, r.width, r.height);
+        const locked = c.dataset.locked === '1';
+        ctx.globalAlpha = locked ? 0.35 : 1;
+        ctx.save(); ctx.translate(r.width / 2, r.height - 12);
+        ch.draw(ctx, {
+          s: r.height / 62, col: locked ? '#8a8a92' : colors[(Math.floor(t / 1.6) + i) % colors.length], t,
+          run: (t * 2) % 1, moving: locked ? 0 : 1, air: false, face: 1, squash: 1,
+        });
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      });
+      charAnim = requestAnimationFrame(loop);
+    };
+    charAnim = requestAnimationFrame(loop);
+  }
+
+  function renderChars() {
+    const stars = api.totalStars();
+    modal.querySelector('.star-count').innerHTML = `<span class="stars">★</span> ${stars} stars`;
+    modal.querySelector('.chars').innerHTML = api.characters().map((c) => `
+      <button class="char${c.selected ? ' selected' : ''}${c.unlocked ? '' : ' locked'}" data-char="${c.unlocked ? esc(c.id) : ''}"
+        ${c.unlocked ? '' : 'aria-disabled="true"'} aria-pressed="${c.selected}">
+        <canvas data-id="${esc(c.id)}" data-locked="${c.unlocked ? 0 : 1}" aria-hidden="true"></canvas>
+        <span class="char-name">${esc(c.name)}</span>
+        <span class="char-sub">${c.selected ? '✓ Playing as' : c.unlocked ? esc(c.blurb) : `🔒 ${c.stars} ★ needed · ${c.stars - stars} to go`}</span>
+      </button>`).join('');
   }
 
   document.addEventListener('keydown', (e) => {
@@ -180,6 +247,7 @@ const UI = (() => {
     },
     setMode(m) { if (m !== mode) { mode = m; render(); } },
     openLeaderboard,
+    openCharacters,
     get modalOpen() { return !!modal; },
   };
 })();
