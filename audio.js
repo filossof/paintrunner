@@ -170,6 +170,8 @@ const Sound = (() => {
         tone(f, i === 5 ? 0.5 : 0.16, { type: 'triangle', vol: 0.08, when: t + i * 0.09 }));
     },
     select: () => tone(880, 0.05, { type: 'sine', vol: 0.03 }),
+    sizzle: () => noise(0.25, { vol: 0.08, type: 'highpass', freq: 3000 }),
+    burn: () => { noise(0.5, { vol: 0.14, type: 'lowpass', freq: 900 }); tone(300, 0.5, { type: 'sawtooth', vol: 0.04, slideTo: 40 }); },
     stomp: () => {
       tone(180, 0.15, { type: 'square', vol: 0.06, slideTo: 60, filter: 1500 });
       noise(0.12, { vol: 0.1, freq: 700 });

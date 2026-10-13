@@ -101,7 +101,7 @@
     levelIdx: 0,
     world: null,
     color: BLUE,
-    unlocked: Math.min(store.get('unlocked', 0), LEVELS.length - 1),
+    unlocked: 0,                                // set by refreshUnlocked() from cleared levels
     best: store.get('bestByName', {}),
     stars: store.get('starsByName', {}),
     best3: store.get('best3ByName', {}),        // fastest time with all 3 cans
@@ -112,6 +112,13 @@
     lastResult: null,
     toast: null,
   };
+  // You can play every level up to and including the first one you haven't cleared.
+  // (Based on level names, so reordering or adding levels never skips anything.)
+  function refreshUnlocked() {
+    const i = LEVELS.findIndex((l) => game.best[l.name] === undefined);
+    game.unlocked = i < 0 ? LEVELS.length - 1 : i;
+  }
+  refreshUnlocked();
   game.menuIdx = game.unlocked;
 
   let particles = [];
@@ -160,10 +167,19 @@
         case 'land': sfx.land(); squash = 0.7; break;
         case 'shrink': sfx.shrink(); squash = 0.6; burst(ev.x, ev.y, COLOR_HEX[YELLOW], 16, 3, 3); break;
         case 'grow': sfx.grow(); squash = 1.4; burst(ev.x, ev.y, COLOR_HEX[YELLOW], 16, 4, 4); break;
-        case 'die': sfx.die(); game.shake = 12; burst(ev.x, ev.y, '#111', 30, 6, 5); break;
+        case 'die':
+          if (ev.cause === 'lava') {
+            sfx.burn(); game.shake = 14;
+            burst(ev.x, ev.y, '#ff8c1a', 26, 6, 5); burst(ev.x, ev.y, '#ffd23f', 14, 5, 4); burst(ev.x, ev.y - 10, '#555', 12, 3, 6);
+          } else { sfx.die(); game.shake = 12; burst(ev.x, ev.y, '#111', 30, 6, 5); }
+          break;
+        case 'sizzle': sfx.sizzle(); burst(ev.x, ev.y, '#bbb', 8, 2, 4); burst(ev.x, ev.y, '#ff8c1a', 5, 2.5, 2); break;
         case 'respawn': sfx.respawn(); break;
         case 'stomp': sfx.stomp(); squash = 1.3; game.shake = 4; burst(ev.x, ev.y, INK, 18, 5, 4); break;
-        case 'monsterDie': sfx.stomp(); burst(ev.x, ev.y, INK, 14, 4, 4); break;
+        case 'monsterDie':
+          if (ev.cause === 'lava') { sfx.sizzle(); burst(ev.x, ev.y, '#ff8c1a', 16, 4, 4); }
+          else { sfx.stomp(); burst(ev.x, ev.y, INK, 14, 4, 4); }
+          break;
         case 'stun': sfx.stun(); burst(ev.x, ev.y, paintHex(ev.color), 12, 3, 3); break;
         case 'deflect': sfx.clank(); burst(ev.x, ev.y, paintHex(ev.color), 6, 3, 2); showToast('Same color as its hat - no effect!'); break;
         case 'warn': sfx.warn(); break;
@@ -198,10 +214,8 @@
     if (stars === 3 && !(game.best3[key] <= time)) { game.best3[key] = time; store.set('best3ByName', game.best3); }
     if (!(game.fewest[key] <= w.throws)) { game.fewest[key] = w.throws; store.set('fewestByName', game.fewest); }
     game.lastResult = { time, throws: w.throws, deaths: w.deaths, isBest, stars, newStars, cloud: null };
-    if (game.levelIdx + 1 > game.unlocked && game.levelIdx + 1 < LEVELS.length) {
-      game.unlocked = game.levelIdx + 1;
-      store.set('unlocked', game.unlocked);
-    }
+    refreshUnlocked();
+    store.set('unlocked', game.unlocked);
     postResult(game.lastResult, true);
     game.mode = 'complete';
   }
@@ -262,7 +276,7 @@
       if (p.th !== undefined) game.fewest[name] = p.th;
     }
     const wasAtUnlocked = game.menuIdx === game.unlocked;
-    game.unlocked = Math.max(game.unlocked, Math.min(m.unlocked || 0, LEVELS.length - 1));
+    refreshUnlocked();
     if (game.mode === 'title' && wasAtUnlocked) game.menuIdx = game.unlocked;
     store.set('bestByName', game.best); store.set('starsByName', game.stars);
     store.set('best3ByName', game.best3); store.set('fewestByName', game.fewest);
@@ -330,6 +344,7 @@
     pressed.clear();
 
     for (const p of particles) {
+      if (p.ember) { p.vy *= 0.99; p.x += p.vx + Math.sin((p.life + p.y) * 0.1) * 0.3; p.y += p.vy; p.life--; continue; }
       p.vy += 0.25; p.x += p.vx; p.y += p.vy; p.vx *= 0.97; p.life--;
     }
     particles = particles.filter((p) => p.life > 0);
@@ -447,6 +462,77 @@
         if (s.dir === 'left') { ctx.moveTo(x + T, y + a); ctx.lineTo(x + 8, y + m); ctx.lineTo(x + T, y + b); }
       }
       ctx.fill();
+    }
+  }
+
+  // ---- lava ----
+  function drawLava(w) {
+    const lv = w.level;
+    if (!lv.lava.length) return;
+    const t = game.tick;
+    // glow above the surface
+    ctx.save();
+    for (const l of lv.lava) {
+      if (!l.surface) continue;
+      const x = l.c * T, y = l.r * T;
+      const g = ctx.createLinearGradient(0, y - 46, 0, y + 6);
+      g.addColorStop(0, 'rgba(255,120,20,0)');
+      g.addColorStop(1, 'rgba(255,120,20,0.28)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y - 46, T, 52);
+    }
+    ctx.restore();
+    for (const l of lv.lava) {
+      const x = l.c * T, y = l.r * T;
+      const g = ctx.createLinearGradient(0, y, 0, y + T);
+      if (l.surface) {
+        g.addColorStop(0, '#ffd23f'); g.addColorStop(0.3, '#ff8c1a'); g.addColorStop(1, '#d9480f');
+      } else {
+        g.addColorStop(0, '#d9480f'); g.addColorStop(1, '#8f1d06');
+      }
+      ctx.fillStyle = g;
+      if (l.surface) {
+        // wavy surface
+        ctx.beginPath();
+        ctx.moveTo(x, y + T);
+        for (let i = 0; i <= T; i += 4) {
+          const wy = y + 6 + Math.sin((x + i) * 0.15 + t * 0.08) * 2.5 + Math.sin((x + i) * 0.05 - t * 0.05) * 1.5;
+          ctx.lineTo(x + i, wy);
+        }
+        ctx.lineTo(x + T, y + T);
+        ctx.closePath();
+        ctx.fill();
+        // bright crest
+        ctx.strokeStyle = 'rgba(255,245,180,0.85)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i <= T; i += 4) {
+          const wy = y + 6 + Math.sin((x + i) * 0.15 + t * 0.08) * 2.5 + Math.sin((x + i) * 0.05 - t * 0.05) * 1.5;
+          if (i === 0) ctx.moveTo(x + i, wy); else ctx.lineTo(x + i, wy);
+        }
+        ctx.stroke();
+        // bubbles that rise and pop
+        const phase = (t * 0.02 + hash(l.c, l.r) * 10) % 1;
+        if (hash(l.c * 3, l.r) > 0.35) {
+          const bx = x + 6 + hash(l.c, l.r * 7) * (T - 12);
+          const by = y + T - phase * (T - 4);
+          const br = 1.5 + phase * 3;
+          ctx.fillStyle = phase > 0.85 ? 'rgba(255,240,170,0.9)' : 'rgba(255,200,80,0.8)';
+          ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+        }
+      } else {
+        ctx.fillRect(x, y, T, T);
+        // slow dark swirls in the deep lava
+        ctx.fillStyle = 'rgba(80,10,0,0.35)';
+        const sx = x + (Math.sin(t * 0.02 + l.c) * 0.5 + 0.5) * T;
+        ctx.beginPath(); ctx.ellipse(sx, y + T / 2, 9, 4, 0, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // embers drifting up from the surface
+    if (t % 6 === 0) {
+      const surf = lv.lava.filter((l) => l.surface);
+      const l = surf[Math.floor(Math.random() * surf.length)];
+      if (l) particles.push({ x: l.c * T + Math.random() * T, y: l.r * T + 4, vx: (Math.random() - 0.5) * 0.6, vy: -1.2 - Math.random() * 1.2, life: 50, color: Math.random() < 0.5 ? '#ffb703' : '#ff6b1a', size: 1.5 + Math.random() * 1.5, ember: true });
     }
   }
 
@@ -713,7 +799,7 @@
     for (let i = 0; i < 40; i++) {
       for (let s = 0; s < 3; s++) { vy += BLOB_G / 3; x += vx / 3; y += vy / 3; }
       const c = Math.floor(x / T), r = Math.floor(y / T);
-      if (w.solid(c, r) || w.tile(c, r) === '^') break;
+      if (w.solid(c, r) || w.tile(c, r) === '^' || w.tile(c, r) === 'L') break;
       if (w.platforms.some((pl) => x >= pl.x && x <= pl.x + pl.w && y >= pl.y && y <= pl.y + pl.h)) break;
       if (i % 2 === 0) {
         ctx.globalAlpha = 0.55 * (1 - i / 40);
@@ -778,6 +864,7 @@
   function drawWorld(w) {
     drawBackground();
     drawTiles(w);
+    drawLava(w);
     drawPlatforms(w);
     drawPortals(w);
     drawCans(w);

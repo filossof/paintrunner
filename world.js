@@ -57,6 +57,13 @@ function parseLevel(def) {
       spikes.push({ c, r, dir });
     }
   }
+  // Lava: deadly liquid. The top tile of a pool has a surface you sink into a little.
+  const lava = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (tiles[r][c] === 'L') lava.push({ c, r, surface: r === 0 || tiles[r - 1][c] !== 'L' });
+    }
+  }
   const platforms = (def.platforms || []).map((p) => ({
     x0: p.from[0] * T, y0: p.from[1] * T, x1: p.to[0] * T, y1: p.to[1] * T,
     x: p.from[0] * T, y: p.from[1] * T, w: p.w * T, h: PLATFORM_H,
@@ -69,7 +76,7 @@ function parseLevel(def) {
   for (const m of def.monsters || []) {
     if (solidAt(m.c, m.r)) throw new Error(`${def.name}: monster at ${m.c},${m.r} is inside a wall`);
   }
-  return { name: def.name, hint: def.hint, colors: def.colors, tiles, paint, spawn, flag, spikes, platforms, cans,
+  return { name: def.name, hint: def.hint, colors: def.colors, tiles, paint, spawn, flag, spikes, lava, platforms, cans,
     monsterDefs: def.monsters || [] };
 }
 
@@ -132,6 +139,7 @@ class World {
       grounded: true, groundColor: NONE, coyote: 0, jumpBuf: 0, canCut: false,
       cling: 0, clingLock: 0, throwCd: 0, ride: null, yellowLatch: false, sizeCd: 0,
       preVx: 0, preVy: 0, portalLatch: false, portalCd: 0,
+      carry: 0,   // sideways speed kept from a moving platform you jumped off
     };
     this.blobs = [];
   }
@@ -341,6 +349,9 @@ class World {
           if (painted) plat.color = b.color;
           this.events.push({ type: 'splat', x: b.x, y: b.y, color: b.color, painted });
           done = true;
+        } else if (t === 'L') {
+          this.events.push({ type: 'sizzle', x: nx, y: ny });
+          done = true;
         } else if (t === '^') {
           this.events.push({ type: 'splat', x: nx, y: ny, color: b.color, painted: false });
           done = true;
@@ -380,7 +391,8 @@ class World {
   // ---- size (yellow) ----
   setSize(p, size) {
     const s = SIZES[size];
-    const nx = p.x + p.w / 2 - s.w / 2;
+    // keep the wall you're stuck to touching you; otherwise stay centered
+    const nx = p.cling === 1 ? p.x + p.w - s.w : p.cling === -1 ? p.x : p.x + p.w / 2 - s.w / 2;
     const ny = p.cling === 2 ? p.y : p.y + p.h - s.h; // keep feet (or hands, on a ceiling) in place
     if (this.rectHitsSolid(nx, ny, s.w, s.h)) return false;
     p.x = nx; p.y = ny; p.w = s.w; p.h = s.h; p.size = size;
@@ -491,8 +503,13 @@ class World {
         }
       }
 
-      // monsters die on spikes or falling out of the world
+      // monsters die on spikes, in lava, or falling out of the world
       if (m.y > H) m.alive = false;
+      if (this.inLava(m)) {
+        m.alive = false;
+        this.events.push({ type: 'monsterDie', x: m.x + m.w / 2, y: m.y + m.h / 2, cause: 'lava' });
+        continue;
+      }
       for (const s of this.level.spikes) {
         if (overlap(m.x, m.y, m.w, m.h, s.c * T + 4, s.r * T + 4, T - 8, T - 8)) {
           m.alive = false;
@@ -503,14 +520,22 @@ class World {
     }
   }
 
+  inLava(o) {
+    for (const l of this.level.lava) {
+      const top = l.r * T + (l.surface ? 12 : 0);
+      if (overlap(o.x, o.y, o.w, o.h, l.c * T, top, T, (l.r + 1) * T - top)) return true;
+    }
+    return false;
+  }
+
   // ---- player ----
-  die() {
+  die(cause) {
     if (this.state !== 'play') return;
     const p = this.player;
     this.state = 'dead';
     this.timer = 0;
     this.deaths++;
-    this.events.push({ type: 'die', x: p.x + p.w / 2, y: p.y + p.h / 2 });
+    this.events.push({ type: 'die', x: p.x + p.w / 2, y: p.y + p.h / 2, cause });
   }
 
   stepPlayer(inp) {
@@ -613,6 +638,7 @@ class World {
     if (p.grounded) p.coyote = 6; else if (p.coyote > 0) p.coyote--;
     if (p.jumpBuf > 0 && p.coyote > 0) {
       const blue = p.groundColor === BLUE;
+      p.carry = p.ride ? p.ride.dx : 0;
       p.vy = blue ? -BOUNCE_V : -size.jump;
       p.canCut = !blue;
       p.grounded = false; p.coyote = 0; p.jumpBuf = 0;
@@ -623,6 +649,13 @@ class World {
     p.preVx = p.vx; p.preVy = p.vy;
 
     // Horizontal move + wall interactions
+    if (p.grounded || p.cling) p.carry = 0;
+    if (p.carry) {
+      const vx = p.vx;
+      p.vx = p.carry;
+      if (this.moveX(p)) p.carry = 0;
+      p.vx = vx;
+    }
     const hx = this.moveX(p);
     if (hx) {
       const airborne = !p.grounded;
@@ -654,6 +687,7 @@ class World {
       p.groundColor = hy.color;
       if (hy.color === BLUE && !inp.down && fallSpeed > 2) {
         p.vy = -BOUNCE_V; p.grounded = false; p.canCut = false;
+        p.carry = hy.plat ? hy.plat.dx : 0;
         this.events.push({ type: 'bounce', x: p.x + p.w / 2, y: p.y + p.h });
       } else if (!wasGrounded && fallSpeed > 4) {
         this.events.push({ type: 'land', x: p.x + p.w / 2, y: p.y + p.h, v: fallSpeed });
@@ -682,6 +716,7 @@ class World {
       if (overlap(p.x, p.y, p.w, p.h, ...box)) { this.die(); return; }
     }
     if (p.y > H + 40 || p.y < -80) { this.die(); return; }
+    if (this.inLava(p)) { this.die('lava'); return; }
 
     for (const m of this.monsters) {
       if (!m.alive || !overlap(p.x, p.y, p.w, p.h, m.x, m.y, m.w, m.h)) continue;
