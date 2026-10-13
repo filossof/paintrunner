@@ -124,7 +124,7 @@ const UI = (() => {
     const uid = Cloud.user && Cloud.user.uid;
     const items = rows.length
       ? `<ol>${rows.map((r, i) => `<li class="${r.uid === uid ? 'me' : ''}">
-            <span class="rank">${i + 1}</span>${avatar(r.photo)}<span class="who">${esc(r.name)}</span><span class="val">${value(r)}</span>
+            <span class="rank${r.rank === 1 ? ' first' : ''}">${r.rank}</span>${avatar(r.photo)}<span class="who">${esc(r.name)}</span><span class="val">${value(r)}</span>
           </li>`).join('')}</ol>`
       : '<div class="empty">No one yet. Be the first!</div>';
     const showMine = mine && mineValue(mine) !== null && !rows.some((r) => r.uid === uid);
@@ -162,7 +162,7 @@ const UI = (() => {
         content.innerHTML = `<section class="board" style="max-width:560px;margin:0 auto">
             <h3><span class="swatch" style="background:var(--yellow)"></span>Most stars collected<small>${LEVELS.length * 3} possible</small></h3>
             ${rows.length ? `<ol>${rows.map((r, i) => `<li class="${r.uid === uid ? 'me' : ''}">
-              <span class="rank">${i + 1}</span>${avatar(r.photo)}<span class="who">${esc(r.name)} <small style="color:var(--ink-2)">· ${r.levelsCleared || 0} levels</small></span>
+              <span class="rank${r.rank === 1 ? ' first' : ''}">${r.rank}</span>${avatar(r.photo)}<span class="who">${esc(r.name)} <small style="color:var(--ink-2)">· ${r.levelsCleared || 0} levels</small></span>
               <span class="val"><span class="stars">★</span> ${r.totalStars || 0}</span></li>`).join('')}</ol>` : '<div class="empty">No one yet. Be the first!</div>'}
           </section>${signInNote}`;
       }

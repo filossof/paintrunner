@@ -150,7 +150,7 @@ canvas {
 }
 .board li.me { background: #fff6d6; font-weight: 700; }
 .board li .rank { font-weight: 800; color: var(--ink-2); text-align: right; }
-.board li:nth-child(1) .rank { color: var(--gold); }
+.board li .rank.first { color: var(--gold); }
 .board li .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board li .val { font-variant-numeric: tabular-nums; font-weight: 700; }
 .board .empty { padding: 18px 12px; color: var(--ink-2); font-size: 14px; text-align: center; }

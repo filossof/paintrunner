@@ -62,25 +62,53 @@ const Cloud = (() => {
   /* Merges one result into a score row. Returns the new row. */
   function mergeScore(old, r, countPlay) {
     const d = old || {};
+    const now = Date.now();
+    const bestTime = round2(min(d.bestTime, r.time));
+    const best3Time = r.stars === 3 && r.time ? round2(min(d.best3Time, r.time)) : d.best3Time;
+    const fewestThrows = min(d.fewestThrows, r.throws);
+    // When each record was set, so ties go to whoever got there first.
+    // (Records from before this existed count as earliest: 0.)
+    const since = (value, oldValue, oldAt) =>
+      value === undefined ? undefined : oldValue === undefined || value < oldValue ? now : (oldAt || 0);
     return dropUndefined({
       uid: user.uid,
       name: publicName(user),
       photo: user.photoURL || '',
       level: r.level,
       levelIdx: r.levelIdx,
-      bestTime: round2(min(d.bestTime, r.time)),
+      bestTime,
+      bestTimeAt: since(bestTime, d.bestTime, d.bestTimeAt),
       bestStars: Math.max(d.bestStars || 0, r.stars || 0),
-      best3Time: r.stars === 3 && r.time ? round2(min(d.best3Time, r.time)) : d.best3Time,
-      fewestThrows: min(d.fewestThrows, r.throws),
+      best3Time,
+      best3TimeAt: since(best3Time, d.best3Time, d.best3TimeAt),
+      fewestThrows,
+      fewestThrowsAt: since(fewestThrows, d.fewestThrows, d.fewestThrowsAt),
       plays: (d.plays || 0) + (countPlay ? 1 : 0),
       updatedAt: Date.now(),
     });
   }
 
+  /* Top rows for one board, lowest value first. Equal values share a place ("1, 1, 3")
+     and, within a tie, whoever set it first is listed first. */
+  async function topOf(name, field, limit) {
+    const snap = await scores(name).orderBy(field).limit(limit + 40).get();
+    const rows = snap.docs.map((d) => d.data())
+      .sort((a, b) => a[field] - b[field] || (a[field + 'At'] || 0) - (b[field + 'At'] || 0));
+    return withRanks(rows, (r) => r[field], (a, b) => a < b).slice(0, limit);
+  }
+
+  // Competition ranking: rank = 1 + how many rows are strictly better.
+  function withRanks(rows, value, better) {
+    return rows.map((r) => ({ ...r, rank: 1 + rows.filter((o) => better(value(o), value(r))).length }));
+  }
+
   async function rankIn(name, field) {
+    const mine = await scores(name).doc(user.uid).get();
+    const v = mine.exists ? mine.data()[field] : undefined;
+    if (v === undefined) return null;
     const snap = await scores(name).orderBy(field).limit(100).get();
-    const i = snap.docs.findIndex((d) => d.id === user.uid);
-    return i < 0 ? null : i + 1;
+    const better = snap.docs.filter((d) => d.data()[field] < v).length;
+    return better >= 100 ? null : better + 1;
   }
 
   return {
@@ -168,6 +196,8 @@ const Cloud = (() => {
         lastSeen: Date.now(),
         unlocked: Math.max(local.unlocked || 0, cloud.unlocked || 0),
         progress: merged, totalStars, levelsCleared: Object.keys(merged).length,
+        // when this star total was first reached (ties in the star ranking go to whoever got there first)
+        starsAt: totalStars > (cloud.totalStars || 0) ? Date.now() : (cloud.starsAt || 0),
       });
       return { merged, unlocked: Math.max(local.unlocked || 0, cloud.unlocked || 0) };
     },
@@ -202,8 +232,8 @@ const Cloud = (() => {
     /* The three boards for one level. */
     async leaderboard(name, limit = 10) {
       await pending;
-      const top = async (field) => (await scores(name).orderBy(field).limit(limit).get()).docs.map((d) => d.data());
-      const [fastest, perfect, efficient] = await Promise.all([top('bestTime'), top('best3Time'), top('fewestThrows')]);
+      const [fastest, perfect, efficient] = await Promise.all(
+        ['bestTime', 'best3Time', 'fewestThrows'].map((f) => topOf(name, f, limit)));
       let me = null;
       if (user) {
         const s = await scores(name).doc(user.uid).get();
@@ -215,8 +245,10 @@ const Cloud = (() => {
     /* Overall ranking by stars collected. */
     async starBoard(limit = 20) {
       await pending;
-      const snap = await db.collection('pr_players').orderBy('totalStars', 'desc').limit(limit).get();
-      return snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+      const snap = await db.collection('pr_players').orderBy('totalStars', 'desc').limit(limit + 40).get();
+      const rows = snap.docs.map((d) => ({ uid: d.id, ...d.data() }))
+        .sort((a, b) => (b.totalStars || 0) - (a.totalStars || 0) || (a.starsAt || 0) - (b.starsAt || 0));
+      return withRanks(rows, (r) => r.totalStars || 0, (a, b) => a > b).slice(0, limit);
     },
 
     // ---- admin dashboard ----

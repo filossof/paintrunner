@@ -294,7 +294,7 @@
         else game.mode = 'end';
       }
       if (tapped('KeyR')) startLevel(game.levelIdx);
-      if (tapped('Escape')) { game.mode = 'title'; game.menuIdx = game.unlocked; }
+      if (tapped('Escape')) { game.mode = 'title'; game.menuIdx = game.levelIdx; } // back to the level you just finished
     } else if (game.mode === 'end') {
       if (tapped('Enter', 'Space', 'Escape')) { game.mode = 'title'; game.menuIdx = game.unlocked; }
     } else if (game.mode === 'play') {
