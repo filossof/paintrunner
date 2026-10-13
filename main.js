@@ -105,6 +105,9 @@
     best: store.get('bestByName', {}),
     stars: store.get('starsByName', {}),
     character: store.get('character', 'blob'),  // which hero you play as (see characters.js)
+    // Paint Drops + store: earned/spent only ever go up, so two devices merge by taking the max.
+    wallet: Object.assign({ earned: 0, spent: 0, owned: [], equipped: {}, equippedAt: 0, clears: {}, daily: '' }, store.get('wallet', {})),
+    runStomps: 0,
     best3: store.get('best3ByName', {}),        // fastest time with all 3 cans
     fewest: store.get('fewestByName', {}),      // fewest paint throws
     menuIdx: 0,
@@ -125,6 +128,7 @@
   let particles = [];
   let squash = 1;
   let runPhase = 0;   // where the feet are in their step cycle
+  let heroTrail = SHOP.makeTrail(), splatMarks = [], pops = [];
   let prevJumpHeld = false;
 
   function startLevel(i) {
@@ -132,6 +136,10 @@
     game.world = new World(LEVELS[i]);
     game.mode = 'play';
     game.color = LEVELS[i].colors[0];
+    game.runStomps = 0;
+    heroTrail = SHOP.makeTrail();
+    splatMarks = [];
+    pops = [];
     particles = [];
     squash = 1;
   }
@@ -159,6 +167,7 @@
         case 'bounce': sfx.bounce(); squash = 1.4; burst(ev.x, ev.y, COLOR_HEX[BLUE], 10, 3, 3); break;
         case 'throw': sfx.throw(); break;
         case 'splat':
+          if (ev.painted && look().splat) splatMarks.push({ x: ev.x, y: ev.y, col: ev.color ? COLOR_HEX[ev.color] : '#f4f1ea', life: 1.4, seed: Math.random() * 6 });
           if (ev.quiet) { /* yellow shot hit the player; grow/shrink plays instead */ }
           else if (ev.painted) sfx.splat(); else sfx.clank();
           burst(ev.x, ev.y, ev.color ? COLOR_HEX[ev.color] : '#f4f1ea', ev.painted ? 14 : 6, 3.5, 4);
@@ -168,6 +177,7 @@
         case 'shrink': sfx.shrink(); squash = 0.6; burst(ev.x, ev.y, COLOR_HEX[YELLOW], 16, 3, 3); break;
         case 'grow': sfx.grow(); squash = 1.4; burst(ev.x, ev.y, COLOR_HEX[YELLOW], 16, 4, 4); break;
         case 'die':
+          if (look().pop) SHOP.burst(pops, look().pop, ev.x, ev.y);
           if (ev.cause === 'lava') {
             sfx.burn(); game.shake = 14;
             burst(ev.x, ev.y, '#ff8c1a', 26, 6, 5); burst(ev.x, ev.y, '#ffd23f', 14, 5, 4); burst(ev.x, ev.y - 10, '#555', 12, 3, 6);
@@ -175,7 +185,7 @@
           break;
         case 'sizzle': sfx.sizzle(); burst(ev.x, ev.y, '#bbb', 8, 2, 4); burst(ev.x, ev.y, '#ff8c1a', 5, 2.5, 2); break;
         case 'respawn': sfx.respawn(); break;
-        case 'stomp': sfx.stomp(); squash = 1.3; game.shake = 4; burst(ev.x, ev.y, INK, 18, 5, 4); break;
+        case 'stomp': game.runStomps++; sfx.stomp(); squash = 1.3; game.shake = 4; burst(ev.x, ev.y, INK, 18, 5, 4); break;
         case 'monsterDie':
           if (ev.cause === 'lava') { sfx.sizzle(); burst(ev.x, ev.y, '#ff8c1a', 16, 4, 4); }
           else { sfx.stomp(); burst(ev.x, ev.y, INK, 14, 4, 4); }
@@ -209,13 +219,19 @@
     if (isBest) { game.best[key] = time; store.set('bestByName', game.best); }
     const stars = w.cansCollected;
     const starsBefore = totalStars();
+    const earned = earnDrops(key, {
+      firstClear: prev === undefined,
+      newCans: Math.max(0, stars - (game.stars[key] || 0)),
+      isBest,
+      stomps: Math.min(game.runStomps, w.monsters.length),
+    });
     const newStars = stars > (game.stars[key] || 0);
     if (newStars) { game.stars[key] = stars; store.set('starsByName', game.stars); }
     if (stars === 3 && !(game.best3[key] <= time)) { game.best3[key] = time; store.set('best3ByName', game.best3); }
     if (!(game.fewest[key] <= w.throws)) { game.fewest[key] = w.throws; store.set('fewestByName', game.fewest); }
     const starsAfter = totalStars();
     const unlockedNow = CHARACTERS.filter((c) => c.stars > starsBefore && c.stars <= starsAfter);
-    game.lastResult = { time, throws: w.throws, deaths: w.deaths, isBest, stars, newStars, cloud: null, unlockedNow };
+    game.lastResult = { time, throws: w.throws, deaths: w.deaths, isBest, stars, newStars, cloud: null, unlockedNow, earned, at: game.tick };
     if (unlockedNow.length) setTimeout(() => sfx.grow(), 400);
     refreshUnlocked();
     store.set('unlocked', game.unlocked);
@@ -278,7 +294,7 @@
       if (game.best[l.name] === undefined) continue;
       progress[l.name] = { t: game.best[l.name], s: game.stars[l.name] || 0, t3: game.best3[l.name], th: game.fewest[l.name] };
     }
-    return { progress, unlocked: game.unlocked };
+    return { progress, unlocked: game.unlocked, wallet: game.wallet };
   }
 
   function applyProgress(m) {
@@ -288,6 +304,7 @@
       if (p.t3 !== undefined) game.best3[name] = p.t3;
       if (p.th !== undefined) game.fewest[name] = p.th;
     }
+    if (m.wallet) { game.wallet = m.wallet; saveWallet(); }
     const wasAtUnlocked = game.menuIdx === game.unlocked;
     refreshUnlocked();
     if (game.mode === 'title' && wasAtUnlocked) game.menuIdx = game.unlocked;
@@ -304,6 +321,11 @@
 
     if (tapped('KeyM')) showToast(Sound.toggleMusic() ? '♪ Music on' : '♪ Music off');
     if (tapped('KeyF')) toggleFullscreen();
+    if (tapped('KeyS') && (game.mode === 'title' || game.mode === 'complete') && typeof UI !== 'undefined') {
+      UI.openStore();
+      pressed.clear(); keys.clear(); mouse.down = false;
+      return;
+    }
     if (tapped('KeyC') && (game.mode === 'title' || game.mode === 'complete') && typeof UI !== 'undefined') {
       UI.openCharacters();
       pressed.clear(); keys.clear(); mouse.down = false;
@@ -362,6 +384,14 @@
         playLog.lastLevel = LEVELS[game.levelIdx].name;
       }
       const pl = w.player;
+      const trailId = look().trail;
+      if (trailId) {
+        const k = pl.h / 40, moving = w.state === 'play' && (Math.abs(pl.vx) > 0.6 || Math.abs(pl.vy) > 0.6);
+        SHOP.stepTrail(heroTrail, trailId, pl.x + pl.w / 2 - pl.face * 9 * k, pl.y + pl.h * 0.45, 1 / 60, k, 0, moving);
+      }
+      for (const sm of splatMarks) sm.life -= 1 / 60;
+      splatMarks = splatMarks.filter((sm) => sm.life > 0);
+      pops = SHOP.stepBurst(pops, 1 / 60);
       const dist = pl.cling === 1 || pl.cling === -1 ? Math.abs(pl.vy) : Math.abs(pl.vx);
       runPhase = (runPhase + dist / (24 * pl.h / 40)) % 1;
       handleEvents(w);
@@ -768,21 +798,9 @@
 
   function drawFlag(w) {
     const f = w.level.flag;
-    const x = f.c * T + T / 2 - 6, base = f.r * T + T;
-    ctx.fillStyle = INK;
-    ctx.fillRect(x, base - 48, 3, 48);
-    const wave = Math.sin(game.tick * 0.1);
-    ALL_COLORS.forEach((c, i) => {
-      ctx.fillStyle = COLOR_HEX[c];
-      ctx.beginPath();
-      const y0 = base - 48 + i * 5;
-      ctx.moveTo(x + 3, y0);
-      ctx.quadraticCurveTo(x + 13, y0 + wave * 3, x + 25, y0 + wave * 2);
-      ctx.lineTo(x + 25, y0 + 5 + wave * 2);
-      ctx.quadraticCurveTo(x + 13, y0 + 5 + wave * 3, x + 3, y0 + 5);
-      ctx.fill();
-    });
+    SHOP.drawFlag(ctx, look().flag, f.c * T + T / 2 - 6, f.r * T + T, 0.92, game.tick / 60);
   }
+
 
   function drawPlayer(w) {
     const p = w.player;
@@ -802,8 +820,17 @@
     } else {
       ctx.translate(p.x + p.w / 2, p.y + p.h);
     }
-    currentCharacter().draw(ctx, o);
+    SHOP.drawHero(ctx, currentCharacter(), o, look());
     ctx.restore();
+  }
+
+  function drawCosmetics(w) {
+    SHOP.drawTrail(ctx, heroTrail, look().trail, w.player.h / 40, game.tick / 60);
+    for (const sm of splatMarks) {
+      ctx.globalAlpha = Math.min(1, sm.life);
+      SHOP.drawSplat(ctx, look().splat, sm.x, sm.y, 7, sm.col, sm.seed);
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawBlobs(w) {
@@ -899,8 +926,10 @@
     drawCans(w);
     drawFlag(w);
     drawMonsters(w);
+    drawCosmetics(w);
     drawBlobs(w);
     drawPlayer(w);
+    SHOP.drawBurst(ctx, pops, look().pop);
     drawParticles();
     drawAim(w);
   }
@@ -957,15 +986,63 @@
     const best = game.best[lv.name];
     const st = game.stars[lv.name] || 0;
     text(best ? `${'★'.repeat(st)}${'☆'.repeat(3 - st)}   Best: ${best.toFixed(2)}s` : 'Not cleared yet', W / 2 + 40, 412, 13, best ? '#ffd166' : 'rgba(255,255,255,0.65)', 'center', 600);
-    text(`★ ${totalStars()} / ${LEVELS.length * 3}`, W - 20, 24, 16, INK, 'right', 800);
-    if (Math.floor(game.tick / 30) % 2 === 0) text('Press ENTER or click to play  ·  L leaderboards  ·  C characters', W / 2, 462, 16, INK, 'center', 700);
 
+    if (Math.floor(game.tick / 30) % 2 === 0) text('Press ENTER or click to play  ·  L leaderboards  ·  C characters  ·  S store', W / 2, 462, 16, INK, 'center', 700);
+
+    text(`★ ${totalStars()} / ${LEVELS.length * 3} stars        ${drops().toLocaleString()} Paint Drops`, W / 2, 492, 15, INK, 'center', 800);
+    ctx.font = '800 15px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
+    const dropsW = ctx.measureText(`${drops().toLocaleString()} Paint Drops`).width;
+    const fullW = ctx.measureText(`★ ${totalStars()} / ${LEVELS.length * 3} stars        ${drops().toLocaleString()} Paint Drops`).width;
+    SHOP.drawDrop(ctx, W / 2 + fullW / 2 - dropsW - 12, 493, 6);
     text('A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen', W / 2, H - 22, 12, INK, 'center', 500);
     if (game.toast) text(game.toast.str, W / 2, 30, 14, INK, 'center', 600);
   }
 
   function totalStars() {
     return LEVELS.reduce((n, l) => n + (game.stars[l.name] || 0), 0);
+  }
+
+  // ---- Paint Drops ----
+  const drops = () => game.wallet.earned - game.wallet.spent;
+  const saveWallet = () => store.set('wallet', game.wallet);
+  const look = () => game.wallet.equipped;
+  const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+  // What finishing a level earns. Called before the level's bests are updated.
+  function earnDrops(key, { firstClear, newCans, isBest, stomps }) {
+    const rows = [];
+    const wl = game.wallet;
+    const clears = wl.clears[key] || 0;
+    if (firstClear) rows.push(['First clear', 50]);
+    else rows.push(['Cleared again', [10, 5, 2][Math.min(clears - 1, 2)] ?? 2]);
+    if (newCans > 0) rows.push([`New can${newCans > 1 ? 's' : ''} × ${newCans}`, 25 * newCans]);
+    if (isBest && !firstClear) rows.push(['New best time', 15]);
+    if (wl.daily !== todayKey()) { rows.push(['First level today', 30]); wl.daily = todayKey(); }
+    if (stomps > 0) rows.push([`Stomps × ${stomps}`, stomps]);
+    wl.clears[key] = clears + 1;
+    const total = rows.reduce((n, r) => n + r[1], 0);
+    wl.earned += total;
+    saveWallet();
+    return { rows, total };
+  }
+
+  function buyItem(id) {
+    const it = SHOP.byId[id];
+    if (!it || game.wallet.owned.includes(id) || drops() < it.price.drops) return false;
+    game.wallet.spent += it.price.drops;
+    game.wallet.owned.push(id);
+    equipItem(id);
+    sfx.can();
+    return true;
+  }
+  function equipItem(id, on = true) {
+    const it = SHOP.byId[id];
+    if (!it || !game.wallet.owned.includes(id)) return false;
+    if (on) game.wallet.equipped[it.cat] = id; else delete game.wallet.equipped[it.cat];
+    game.wallet.equippedAt = Date.now();
+    saveWallet();
+    if (online() && Cloud.user) Cloud.saveProfile(localProgress(), LEVELS).catch(() => { });
+    return true;
   }
 
   // ---- characters ----
@@ -982,10 +1059,13 @@
     return true;
   }
 
-  function drawPanel(lines) {
+  // Dark overlay with centered lines of text. Returns the y of the first line.
+  function drawPanel(lines, step = 42) {
     ctx.fillStyle = 'rgba(15,15,18,0.82)';
     ctx.fillRect(0, 0, W, H);
-    lines.forEach(([str, size, color, weight], i) => text(str, W / 2, 170 + i * 46, size, color, 'center', weight));
+    const y0 = H / 2 - ((lines.length - 1) * step) / 2;
+    lines.forEach(([str, size, color, weight], i) => text(str, W / 2, y0 + i * step, size, color, 'center', weight));
+    return y0;
   }
 
   function render() {
@@ -1000,20 +1080,30 @@
       if (game.mode === 'play') drawHUD(game.world);
       if (game.mode === 'complete') {
         const r = game.lastResult;
-        drawPanel([
-          ['Level complete!', 48, '#fff', 900],
+        const e = r.earned || { rows: [], total: 0 };
+        const k = Math.min(1, (game.tick - (r.at || 0) - 30) / 60);          // the Drops count up after half a second
+        const shown = Math.round(e.total * Math.max(0, k));
+        if (k > 0 && k < 1 && game.tick % 4 === 0) sfx.select();
+        const y0 = drawPanel([
+          ['Level complete!', 46, '#fff', 900],
           ['', 34, '#ffd166', 900],   // the three paint cans are drawn across these two rows, below
           ['', 34, '#ffd166', 900],
-          [`Time ${r.time.toFixed(2)}s${r.isBest ? '  ★ new best' : ''}`, 22, r.isBest ? '#ffd166' : '#fff', 600],
-          [`Paint thrown: ${r.throws}   ·   Falls: ${r.deaths}`, 18, 'rgba(255,255,255,0.75)', 500],
+          [`Time ${r.time.toFixed(2)}s${r.isBest ? '  ★ new best' : ''}`, 21, r.isBest ? '#ffd166' : '#fff', 600],
+          [`Paint thrown: ${r.throws}   ·   Falls: ${r.deaths}`, 16, 'rgba(255,255,255,0.75)', 500],
+          [`+${shown}  Paint Drops`, 26, '#7cc4ff', 900],
+          [e.rows.map(([label, n]) => `${label} +${n}`).join('   ·   '), 13, 'rgba(255,255,255,0.65)', 600],
           cloudLine(r),
           r.unlockedNow && r.unlockedNow.length
-            ? [`New character unlocked: ${r.unlockedNow.map((c) => c.name).join(' & ')}!  Press C to try it`, 17, '#7cf29c', 800]
+            ? [`New character unlocked: ${r.unlockedNow.map((c) => c.name).join(' & ')}!  Press C to try it`, 16, '#7cf29c', 800]
             : ['', 14, '#fff', 500],
-          ['ENTER: next level   ·   R: retry   ·   Esc: menu', 16, 'rgba(255,255,255,0.6)', 500],
-        ]);
-        [0, 1, 2].forEach((i) => drawCan(W / 2 - 56 + i * 56, 246, 1.6, i < r.stars, COLOR_HEX[ALL_COLORS[i]]));
-        if (r.newStars) text('new record!', W / 2 + 96, 246, 16, '#ffd166', 'left', 800);
+          ['ENTER: next level   ·   R: retry   ·   S: store   ·   Esc: menu', 15, 'rgba(255,255,255,0.6)', 500],
+        ], 40);
+        [0, 1, 2].forEach((i) => drawCan(W / 2 - 56 + i * 56, y0 + 62, 1.6, i < r.stars, COLOR_HEX[ALL_COLORS[i]]));
+        if (r.newStars) text('new record!', W / 2 + 96, y0 + 62, 16, '#ffd166', 'left', 800);
+        // a drop next to the total
+        ctx.font = '900 26px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
+        const tw = ctx.measureText(`+${shown}  Paint Drops`).width;
+        SHOP.drawDrop(ctx, W / 2 - tw / 2 - 20, y0 + 5 * 40 + 2, 8);
       }
       if (game.mode === 'end') {
         drawPanel([
@@ -1038,6 +1128,10 @@
       characters: () => CHARACTERS.map((c) => ({ ...c, unlocked: isUnlocked(c), selected: c === currentCharacter() })),
       setCharacter,
       totalStars,
+      currentCharacter: () => currentCharacter(),
+      wallet: () => ({ drops: drops(), owned: [...game.wallet.owned], equipped: { ...game.wallet.equipped } }),
+      buyItem,
+      equipItem,
       paintColors: () => ALL_COLORS.map((c) => COLOR_HEX[c]),
       currentLevel: () => (game.mode === 'title' ? game.menuIdx : game.levelIdx),
       localProgress,

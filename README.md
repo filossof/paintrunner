@@ -16,6 +16,10 @@ A black & white world. Throw paint to change it.
 
 **Controls:** A/D move · W/Space jump · S drop / don't bounce · mouse aim · click throw · right-click wash · 1-5 or Q/E colors · R restart · L leaderboards · M music · Esc menu
 
+## Paint Drops & store
+
+Clearing levels earns **Paint Drops** (first clear +50, each new can +25, replays +10/5/2, new best time +15, first level of the day +30, stomps +1). Spend them in the **store (S)** on cosmetics only: hats, trails, colors, splat styles, finish flags and fall effects (`shop.js`). Stars are never spent; they unlock the 12 characters (`characters.js`).
+
 ## Online features
 
 - **Sign in with Google** (optional) to sync progress between computers and appear on the leaderboards.
@@ -35,7 +39,9 @@ Data lives in its own Firebase project (`paintrunner`), in Firestore collections
 | `audio.js` | Music player (menu/level tracks) and synthesized sound effects |
 | `music/` | Soundtrack MP3s |
 | `cloud.js`, `config.js` | Firebase: sign-in, leaderboards, progress sync |
-| `ui.js` | Sign-in chip and leaderboard window |
+| `ui.js` | Sign-in chip, leaderboards, character picker and store windows |
+| `characters.js` | The 12 playable characters and their star thresholds |
+| `shop.js` | Store items and how each cosmetic is drawn |
 | `stats.html`, `stats.js` | Owner-only dashboard |
 
 ## Testing levels

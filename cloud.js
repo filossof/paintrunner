@@ -58,6 +58,23 @@ const Cloud = (() => {
     });
   }
 
+  // Paint Drops wallet: earned/spent only grow, so the bigger one wins; owned items combine;
+  // equipped comes from whichever device changed it last.
+  function mergeWallet(a = {}, b = {}) {
+    const clears = { ...(b.clears || {}) };
+    for (const [k, v] of Object.entries(a.clears || {})) clears[k] = Math.max(clears[k] || 0, v);
+    const newer = (a.equippedAt || 0) >= (b.equippedAt || 0) ? a : b;
+    return {
+      earned: Math.max(a.earned || 0, b.earned || 0),
+      spent: Math.max(a.spent || 0, b.spent || 0),
+      owned: [...new Set([...(a.owned || []), ...(b.owned || [])])],
+      equipped: { ...(newer.equipped || {}) },
+      equippedAt: newer.equippedAt || 0,
+      clears,
+      daily: (a.daily || '') > (b.daily || '') ? a.daily : (b.daily || ''),
+    };
+  }
+
   const min = (a, b) => (a === undefined || a === null ? b : b === undefined || b === null ? a : Math.min(a, b));
   const dropUndefined = (o) => { Object.keys(o).forEach((k) => o[k] === undefined && delete o[k]); return o; };
   const round2 = (t) => Math.round(t * 100) / 100;
@@ -216,21 +233,23 @@ const Cloud = (() => {
         if (m.t !== undefined) merged[key] = m;
       }
       const totalStars = Object.values(merged).reduce((n, p) => n + (p.s || 0), 0);
+      const wallet = mergeWallet(local.wallet, cloud.wallet);
       await ref.set({
         name: publicName(user), photo: user.photoURL || '',
         joinedAt: cloud.joinedAt || Date.parse(user.metadata.creationTime) || Date.now(),
         lastSeen: Date.now(),
         unlocked: Math.max(local.unlocked || 0, cloud.unlocked || 0),
         progress: merged, totalStars, levelsCleared: Object.keys(merged).length,
+        wallet, drops: wallet.earned - wallet.spent,
         // when this star total was first reached (ties in the star ranking go to whoever got there first)
         starsAt: totalStars > (cloud.totalStars || 0) ? Date.now() : (cloud.starsAt || 0),
       });
-      return { merged, unlocked: Math.max(local.unlocked || 0, cloud.unlocked || 0) };
+      return { merged, unlocked: Math.max(local.unlocked || 0, cloud.unlocked || 0), wallet };
     },
 
     async syncProgress(local, levels) {
       if (!user) return null;
-      const { merged, unlocked } = await this.saveProfile(local, levels);
+      const { merged, unlocked, wallet } = await this.saveProfile(local, levels);
 
       // Backfill leaderboards with any local bests the cloud doesn't know about yet.
       await Promise.all(levels.map(async (l, i) => {
@@ -252,7 +271,7 @@ const Cloud = (() => {
         const p = merged[levelKey(l.name)];
         if (p) progress[l.name] = p;
       }
-      return { progress, unlocked };
+      return { progress, unlocked, wallet };
     },
 
     /* The three boards for one level. */
