@@ -387,13 +387,13 @@
     ctx.restore();
   }
 
-  function drawDrip(x, y, len, color) {
+  function drawDrip(x, y, len, color, r = 2.5) {
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(x - 2.5, y);
-    ctx.lineTo(x - 2.5, y + len);
-    ctx.arc(x, y + len, 2.5, Math.PI, 0, true);
-    ctx.lineTo(x + 2.5, y);
+    ctx.moveTo(x - r, y);
+    ctx.lineTo(x - r, y + len);
+    ctx.arc(x, y + len, r, Math.PI, 0, true);
+    ctx.lineTo(x + r, y);
     ctx.fill();
   }
 
@@ -610,24 +610,46 @@
   }
 
   // ---- paint cans (stars) ----
+  // The collectible paint can: a tin pail with a wire handle, wooden grip, paint on top and a
+  // drip down the side. got === false draws the grey "still to find" version (top bar).
   function drawCan(x, y, size, got, color) {
+    const s = size * 1.15, t = game.tick / 60;
     ctx.save();
-    ctx.translate(x, y);
-    ctx.globalAlpha = got ? 1 : 0.9;
-    // handle
-    ctx.strokeStyle = INK; ctx.lineWidth = 1.5 * size;
-    ctx.beginPath(); ctx.arc(0, -5 * size, 6 * size, Math.PI, 0); ctx.stroke();
-    // bucket
-    ctx.fillStyle = got === false ? '#cfcfd4' : '#b8bcc6';
+    ctx.translate(x, y + 1.2 * s);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 1.5 * s;
+    ctx.strokeStyle = INK;
+    // wire handle + grip
+    ctx.beginPath(); ctx.arc(0, -6 * s, 8.5 * s, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+    if (got) { ctx.fillStyle = '#b07a43'; roundRect(-2.6 * s, -16.2 * s, 5.2 * s, 2.4 * s, 1.1 * s); ctx.fill(); ctx.stroke(); }
+    // body (brushed metal)
+    const metal = ctx.createLinearGradient(-8 * s, 0, 8 * s, 0);
+    metal.addColorStop(0, got ? '#aeb3bc' : '#5c5c63');
+    metal.addColorStop(0.35, got ? '#eef0f3' : '#6e6e76');
+    metal.addColorStop(1, got ? '#8d939d' : '#4a4a50');
+    ctx.fillStyle = metal;
     ctx.beginPath();
-    ctx.moveTo(-7 * size, -5 * size); ctx.lineTo(7 * size, -5 * size);
-    ctx.lineTo(5.5 * size, 8 * size); ctx.lineTo(-5.5 * size, 8 * size);
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = INK; ctx.stroke();
-    // paint
-    ctx.fillStyle = color;
-    ctx.fillRect(-7 * size, -6 * size, 14 * size, 4 * size);
-    ctx.beginPath(); ctx.arc(-3 * size, -2 * size, 1.8 * size, 0, Math.PI * 2); ctx.fill();
+    ctx.moveTo(-8 * s, -6 * s); ctx.lineTo(8 * s, -6 * s); ctx.lineTo(6.2 * s, 9 * s);
+    ctx.quadraticCurveTo(0, 10.4 * s, -6.2 * s, 9 * s); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // ribs
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = s;
+    for (const ry of [-1, 4]) {
+      const inset = (ry + 6) * 0.12 * s;
+      ctx.beginPath(); ctx.moveTo(-7.4 * s + inset, ry * s); ctx.lineTo(7.4 * s - inset, ry * s); ctx.stroke();
+    }
+    // rim
+    ctx.strokeStyle = INK; ctx.lineWidth = 1.5 * s;
+    ctx.fillStyle = got ? '#f2f3f5' : '#77777f';
+    ctx.beginPath(); ctx.ellipse(0, -6 * s, 8.4 * s, 2.7 * s, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (got) {
+      // paint surface + shine, and a drip that stretches and shrinks
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.ellipse(0, -5.8 * s, 7 * s, 2 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath(); ctx.ellipse(-2.6 * s, -6.3 * s, 2 * s, 0.6 * s, -0.1, 0, Math.PI * 2); ctx.fill();
+      drawDrip(5.2 * s, -5 * s, (5 + Math.sin(t * 2 + x * 0.01) * 1.2) * s, color, 1.1 * s);
+    }
     ctx.restore();
   }
 
@@ -953,12 +975,15 @@
         const r = game.lastResult;
         drawPanel([
           ['Level complete!', 48, '#fff', 900],
-          [`${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}${r.newStars ? '   new record!' : ''}`, 34, '#ffd166', 900],
+          ['', 34, '#ffd166', 900],   // the three paint cans are drawn across these two rows, below
+          ['', 34, '#ffd166', 900],
           [`Time ${r.time.toFixed(2)}s${r.isBest ? '  ★ new best' : ''}`, 22, r.isBest ? '#ffd166' : '#fff', 600],
           [`Paint thrown: ${r.throws}   ·   Falls: ${r.deaths}`, 18, 'rgba(255,255,255,0.75)', 500],
           cloudLine(r),
           ['ENTER: next level   ·   R: retry   ·   Esc: menu', 16, 'rgba(255,255,255,0.6)', 500],
         ]);
+        [0, 1, 2].forEach((i) => drawCan(W / 2 - 56 + i * 56, 246, 1.6, i < r.stars, COLOR_HEX[ALL_COLORS[i]]));
+        if (r.newStars) text('new record!', W / 2 + 96, 246, 16, '#ffd166', 'left', 800);
       }
       if (game.mode === 'end') {
         drawPanel([
