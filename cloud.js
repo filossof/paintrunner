@@ -153,10 +153,12 @@ const Cloud = (() => {
     saveSession(d) {
       if (!user) return Promise.resolve();
       if (session.uid !== user.uid) {
+        // Count from the start of the visit, unless someone else was signed in before (then from the switch).
+        session.base = session.uid ? d.seconds : 0;
         session.uid = user.uid;
         session.id = `${user.uid.slice(0, 8)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
         session.startedAt = Date.now();
-        session.base = d.seconds;
+        session.saved = false;
       }
       const seconds = Math.round(d.seconds - session.base);
       if (seconds <= 0 && !session.saved) return Promise.resolve();

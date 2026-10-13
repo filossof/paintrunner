@@ -39,6 +39,7 @@
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   };
   const sum = (xs, f = (x) => x) => xs.reduce((n, x) => n + (f(x) || 0), 0);
+  const runSecs = (r) => r.played || r.time || 0;   // time spent on one run (incl. retries when known)
   const DAY = 86400000;
   const startOfDay = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const store = {
@@ -204,7 +205,11 @@
     for (const r of runs) (byUid[r.uid] = byUid[r.uid] || { uid: r.uid, name: r.name, runs: [], sessions: [] }).runs.push(r);
     for (const s of sessions) (byUid[s.uid] = byUid[s.uid] || { uid: s.uid, name: s.name, runs: [], sessions: [] }).sessions.push(s);
     const people = Object.values(byUid).map((p) => {
-      const secs = (since) => sum(p.sessions.filter((s) => s.lastBeat >= since), (s) => s.seconds);
+      // Play time: recorded sessions, or the time spent on runs if that's more (runs cover the
+      // time before sessions were recorded).
+      const secs = (since) => Math.max(
+        sum(p.sessions.filter((s) => s.lastBeat >= since), (s) => s.seconds),
+        sum(p.runs.filter((r) => r.at >= since), runSecs));
       const lastActive = Math.max(p.lastSeen || 0, ...p.sessions.map((s) => s.lastBeat), ...p.runs.map((r) => r.at));
       const best = p.runs.filter((r) => r.completed);
       return {
@@ -221,7 +226,7 @@
     // ---- overview ----
     const active = people.filter((p) => p.activeInRange);
     const newcomers = people.filter((p) => p.joinedAt && inRange(p.joinedAt));
-    const playSecs = sum(sessR, (s) => s.seconds);
+    const playSecs = sum(people, (p) => p.inRange);
     const withTime = people.filter((p) => p.inRange > 0);
     const clears = runsR.filter((r) => r.completed), quits = runsR.filter((r) => !r.completed);
     const kpi = (v, l, d = '') => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div>${d ? `<div class="d">${d}</div>` : ''}</div>`;
@@ -231,7 +236,7 @@
         ${kpi(dur(playSecs), 'Time played')}
         ${kpi(dur(withTime.length ? playSecs / withTime.length : 0), 'Time per player', 'average')}
         ${kpi(num(sessR.length), 'Play sessions')}
-        ${kpi(dur(sessR.length ? playSecs / sessR.length : 0), 'Session length', `median ${dur(median(sessR.map((s) => s.seconds)))}`)}
+        ${kpi(dur(sessR.length ? sum(sessR, (s) => s.seconds) / sessR.length : 0), 'Session length', sessR.length ? `median ${dur(median(sessR.map((s) => s.seconds)))}` : 'from recorded sessions')}
         ${kpi(num(clears.length), 'Levels cleared')}
         ${kpi(num(quits.length), 'Gave up')}
         ${kpi(pct(clears.length, runsR.length), 'Completion rate', 'cleared ÷ attempts')}
@@ -240,14 +245,20 @@
         ${kpi(`<span class="stars">★</span> ${num(sum(people, (p) => p.totalStars))}`, 'Stars owned', 'all players, all time')}
       </div>
       ${sessionsError ? `<p class="note">Play time is not available yet: ${sessionsError === 'permission-denied' ? 'publish the updated firestore.rules in the Firebase console.' : esc(sessionsError)}</p>`
-        : '<p class="note">Play time counts time spent inside a level with the game tab visible, for signed-in players. It started being recorded with this version of the stats page.</p>'}`;
+        : '<p class="note">Play time is time spent inside levels by signed-in players. It uses recorded play sessions (time in a level with the tab visible) and, where those are missing, such as before sessions were recorded, the time spent on each run.</p>'}`;
 
     // ---- daily charts (always the last 30 days) ----
     const days = Array.from({ length: 30 }, (_, i) => today - (29 - i) * DAY);
     const dayIdx = (ms) => Math.floor((startOfDay(ms) - days[0]) / DAY);
     const activeSets = days.map(() => new Set()), minutes = days.map(() => 0), clearsPerDay = days.map(() => 0);
-    for (const s of sessions) { const i = dayIdx(s.lastBeat); if (i >= 0 && i < 30) { activeSets[i].add(s.uid); minutes[i] += (s.seconds || 0) / 60; } }
-    for (const r of runs) { const i = dayIdx(r.at); if (i >= 0 && i < 30) { activeSets[i].add(r.uid); if (r.completed) clearsPerDay[i]++; } }
+    const daySess = {}, dayRuns = {};   // per day, per player: seconds from sessions / from runs
+    const add = (m, i, uid, v) => { (m[i] = m[i] || {})[uid] = (m[i][uid] || 0) + v; };
+    for (const s of sessions) { const i = dayIdx(s.lastBeat); if (i >= 0 && i < 30) { activeSets[i].add(s.uid); add(daySess, i, s.uid, s.seconds || 0); } }
+    for (const r of runs) { const i = dayIdx(r.at); if (i >= 0 && i < 30) { activeSets[i].add(r.uid); add(dayRuns, i, r.uid, runSecs(r)); if (r.completed) clearsPerDay[i]++; } }
+    days.forEach((_, i) => {
+      const uids = new Set([...Object.keys(daySess[i] || {}), ...Object.keys(dayRuns[i] || {})]);
+      for (const u of uids) minutes[i] += Math.max((daySess[i] || {})[u] || 0, (dayRuns[i] || {})[u] || 0) / 60;
+    });
     const daily = `<div class="charts">
         ${barChart({ title: 'Active players per day', days, values: activeSets.map((s) => s.size), fmt: (v, axis) => (axis ? num(Math.round(v)) : `${v} player${v === 1 ? '' : 's'}`) })}
         ${barChart({ title: 'Minutes played per day', days, values: minutes.map((m) => Math.round(m * 10) / 10), fmt: (v, axis) => (axis ? num(Math.round(v)) : dur(v * 60)), green: true })}
