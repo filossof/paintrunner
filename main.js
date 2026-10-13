@@ -128,7 +128,7 @@
   let particles = [];
   let squash = 1;
   let runPhase = 0;   // where the feet are in their step cycle
-  let heroTrail = SHOP.makeTrail(), splatMarks = [], pops = [];
+  let heroTrail = SHOP.makeTrail(), splatMarks = [], pops = [], stains = [];
   let prevJumpHeld = false;
 
   function startLevel(i) {
@@ -139,6 +139,7 @@
     game.runStomps = 0;
     heroTrail = SHOP.makeTrail();
     splatMarks = [];
+    stains = [];
     pops = [];
     particles = [];
     squash = 1;
@@ -167,6 +168,10 @@
         case 'bounce': sfx.bounce(); squash = 1.4; burst(ev.x, ev.y, COLOR_HEX[BLUE], 10, 3, 3); break;
         case 'throw': sfx.throw(); break;
         case 'splat':
+          if (ev.color && !ev.quiet) {                     // paint splatter stays on the paper for the whole level
+            stains.push(ART.makeStain(ev.x, ev.y, COLOR_HEX[ev.color]));
+            if (stains.length > 60) stains.shift();
+          }
           if (ev.painted && look().splat) splatMarks.push({ x: ev.x, y: ev.y, col: ev.color ? COLOR_HEX[ev.color] : '#f4f1ea', life: 1.4, seed: Math.random() * 6 });
           if (ev.quiet) { /* yellow shot hit the player; grow/shrink plays instead */ }
           else if (ev.painted) sfx.splat(); else sfx.clank();
@@ -432,17 +437,6 @@
     ctx.fillText(str, x, y);
   }
 
-  function hatch(x, y, w, h) {
-    ctx.save();
-    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-    ctx.strokeStyle = INK_LINE;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let k = -h; k < w; k += 8) { ctx.moveTo(x + k, y + h); ctx.lineTo(x + k + h, y); }
-    ctx.stroke();
-    ctx.restore();
-  }
-
   function drawDrip(x, y, len, color, r = 2.5) {
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -454,143 +448,11 @@
   }
 
   function drawBackground() {
-    ctx.fillStyle = PAPER;
-    ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = 'rgba(0,0,0,0.035)';
-    ctx.lineWidth = 1;
-    for (let y = 0; y < H; y += 16) {
-      ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke();
-    }
+    ctx.drawImage(game.world ? ART.paper(LEVELS[game.levelIdx].name, game.levelIdx) : ART.plainPaper(), 0, 0);
+    ART.drawStains(ctx, stains);
   }
-
-  function drawTiles(w) {
-    const lv = w.level;
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const t = lv.tiles[r][c];
-        const x = c * T, y = r * T;
-        if (t === '#') {
-          const col = lv.paint[r][c];
-          if (col) {
-            ctx.fillStyle = COLOR_HEX[col];
-            ctx.fillRect(x, y, T, T);
-            ctx.fillStyle = 'rgba(255,255,255,0.2)';
-            ctx.fillRect(x + 4 + hash(c, r) * 12, y + 4 + hash(r, c) * 10, 6, 3);
-          } else {
-            ctx.fillStyle = INK;
-            ctx.fillRect(x, y, T, T);
-            hatch(x, y, T, T);
-          }
-        } else if (t === 'M') {
-          ctx.fillStyle = METAL;
-          ctx.fillRect(x, y, T, T);
-          ctx.strokeStyle = '#6c717a';
-          ctx.strokeRect(x + 1.5, y + 1.5, T - 3, T - 3);
-          ctx.fillStyle = '#b9bdc4';
-          for (const [dx, dy] of [[6, 6], [T - 6, 6], [6, T - 6], [T - 6, T - 6]]) {
-            ctx.beginPath(); ctx.arc(x + dx, y + dy, 1.8, 0, Math.PI * 2); ctx.fill();
-          }
-        }
-      }
-    }
-    // paint drips under painted tiles with open space below
-    for (let r = 0; r < ROWS - 1; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const col = lv.paint[r][c];
-        if (!col || w.solid(c, r + 1)) continue;
-        for (let k = 0; k < 2; k++) {
-          const dx = 5 + hash(c + k * 31, r) * (T - 10);
-          const len = 4 + hash(r + k * 17, c) * 10 + Math.sin(game.tick * 0.05 + c + k) * 1.2;
-          drawDrip(c * T + dx, (r + 1) * T, len, COLOR_HEX[col]);
-        }
-      }
-    }
-    // spikes
-    ctx.fillStyle = INK;
-    for (const s of lv.spikes) {
-      const x = s.c * T, y = s.r * T;
-      ctx.beginPath();
-      for (let k = 0; k < 3; k++) {
-        const a = k * T / 3, b = a + T / 3, m = (a + b) / 2;
-        if (s.dir === 'up') { ctx.moveTo(x + a, y + T); ctx.lineTo(x + m, y + 8); ctx.lineTo(x + b, y + T); }
-        if (s.dir === 'down') { ctx.moveTo(x + a, y); ctx.lineTo(x + m, y + T - 8); ctx.lineTo(x + b, y); }
-        if (s.dir === 'right') { ctx.moveTo(x, y + a); ctx.lineTo(x + T - 8, y + m); ctx.lineTo(x, y + b); }
-        if (s.dir === 'left') { ctx.moveTo(x + T, y + a); ctx.lineTo(x + 8, y + m); ctx.lineTo(x + T, y + b); }
-      }
-      ctx.fill();
-    }
-  }
-
-  // ---- lava ----
-  function drawLava(w) {
-    const lv = w.level;
-    if (!lv.lava.length) return;
-    const t = game.tick;
-    // glow above the surface
-    ctx.save();
-    for (const l of lv.lava) {
-      if (!l.surface) continue;
-      const x = l.c * T, y = l.r * T;
-      const g = ctx.createLinearGradient(0, y - 46, 0, y + 6);
-      g.addColorStop(0, 'rgba(255,120,20,0)');
-      g.addColorStop(1, 'rgba(255,120,20,0.28)');
-      ctx.fillStyle = g;
-      ctx.fillRect(x, y - 46, T, 52);
-    }
-    ctx.restore();
-    for (const l of lv.lava) {
-      const x = l.c * T, y = l.r * T;
-      const g = ctx.createLinearGradient(0, y, 0, y + T);
-      if (l.surface) {
-        g.addColorStop(0, '#ffd23f'); g.addColorStop(0.3, '#ff8c1a'); g.addColorStop(1, '#d9480f');
-      } else {
-        g.addColorStop(0, '#d9480f'); g.addColorStop(1, '#8f1d06');
-      }
-      ctx.fillStyle = g;
-      if (l.surface) {
-        // wavy surface
-        ctx.beginPath();
-        ctx.moveTo(x, y + T);
-        for (let i = 0; i <= T; i += 4) {
-          const wy = y + 6 + Math.sin((x + i) * 0.15 + t * 0.08) * 2.5 + Math.sin((x + i) * 0.05 - t * 0.05) * 1.5;
-          ctx.lineTo(x + i, wy);
-        }
-        ctx.lineTo(x + T, y + T);
-        ctx.closePath();
-        ctx.fill();
-        // bright crest
-        ctx.strokeStyle = 'rgba(255,245,180,0.85)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (let i = 0; i <= T; i += 4) {
-          const wy = y + 6 + Math.sin((x + i) * 0.15 + t * 0.08) * 2.5 + Math.sin((x + i) * 0.05 - t * 0.05) * 1.5;
-          if (i === 0) ctx.moveTo(x + i, wy); else ctx.lineTo(x + i, wy);
-        }
-        ctx.stroke();
-        // bubbles that rise and pop
-        const phase = (t * 0.02 + hash(l.c, l.r) * 10) % 1;
-        if (hash(l.c * 3, l.r) > 0.35) {
-          const bx = x + 6 + hash(l.c, l.r * 7) * (T - 12);
-          const by = y + T - phase * (T - 4);
-          const br = 1.5 + phase * 3;
-          ctx.fillStyle = phase > 0.85 ? 'rgba(255,240,170,0.9)' : 'rgba(255,200,80,0.8)';
-          ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
-        }
-      } else {
-        ctx.fillRect(x, y, T, T);
-        // slow dark swirls in the deep lava
-        ctx.fillStyle = 'rgba(80,10,0,0.35)';
-        const sx = x + (Math.sin(t * 0.02 + l.c) * 0.5 + 0.5) * T;
-        ctx.beginPath(); ctx.ellipse(sx, y + T / 2, 9, 4, 0, 0, Math.PI * 2); ctx.fill();
-      }
-    }
-    // embers drifting up from the surface
-    if (t % 6 === 0) {
-      const surf = lv.lava.filter((l) => l.surface);
-      const l = surf[Math.floor(Math.random() * surf.length)];
-      if (l) particles.push({ x: l.c * T + Math.random() * T, y: l.r * T + 4, vx: (Math.random() - 0.5) * 0.6, vy: -1.2 - Math.random() * 1.2, life: 50, color: Math.random() < 0.5 ? '#ffb703' : '#ff6b1a', size: 1.5 + Math.random() * 1.5, ember: true });
-    }
-  }
+  const drawTiles = (w) => ART.drawTiles(ctx, w, game.tick / 60, COLOR_HEX);
+  const drawLava = (w) => ART.drawLava(ctx, w, game.tick / 60);
 
   function drawPlatforms(w) {
     for (const pl of w.platforms) {
@@ -619,14 +481,16 @@
           drawDrip(pl.x + 8 + k * (pl.w - 16) / 2, pl.y + pl.h - 1, 3 + hash(k, pl.x0) * 6 + Math.sin(game.tick * 0.06 + k) * 1.2, COLOR_HEX[pl.color]);
         }
       } else {
-        ctx.fillStyle = INK;
+        ctx.fillStyle = ART.inkPattern(ctx);
         ctx.fill();
-        hatch(pl.x + 2, pl.y + 2, pl.w - 4, pl.h - 4);
       }
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-      ctx.lineWidth = 2;
-      roundRect(pl.x, pl.y, pl.w, pl.h, 4);
-      ctx.stroke();
+      ctx.strokeStyle = INK;
+      ctx.lineCap = 'round';
+      const t = game.tick / 60, sd = Math.round(pl.x0 + pl.y0);
+      ART.inkLine(ctx, pl.x - 1, pl.y, pl.x + pl.w + 1, pl.y, sd, 0.65, 2.4, t);
+      ART.inkLine(ctx, pl.x - 1, pl.y + pl.h, pl.x + pl.w + 1, pl.y + pl.h, sd + 1, 0.65, 2.4, t);
+      ART.inkLine(ctx, pl.x, pl.y, pl.x, pl.y + pl.h, sd + 2, 0.65, 2.4, t);
+      ART.inkLine(ctx, pl.x + pl.w, pl.y, pl.x + pl.w, pl.y + pl.h, sd + 3, 0.65, 2.4, t);
       // gear/bolt details so it reads as a machine
       ctx.fillStyle = 'rgba(255,255,255,0.45)';
       for (const bx of [pl.x + 6, pl.x + pl.w - 6]) {
@@ -733,6 +597,7 @@
       const step = stunned ? 0 : Math.sin(game.tick * 0.35 + m.x * 0.05);
       const x = m.x + shake, y = m.y, mw = m.w, mh = m.h;
 
+      ART.shadow(ctx, x + mw / 2, y + mh, mw * 0.55);
       // feet
       ctx.fillStyle = INK;
       ctx.beginPath(); ctx.ellipse(x + mw * 0.3, y + mh - 1 + (step > 0 ? -1.5 : 0), 5, 3, 0, 0, Math.PI * 2); ctx.fill();
@@ -744,7 +609,9 @@
       ctx.quadraticCurveTo(x - 2, y + 2 + wob, x + mw / 2, y + wob * 0.5);
       ctx.quadraticCurveTo(x + mw + 2, y + 2 - wob, x + mw, y + mh - 3);
       ctx.closePath();
+      ctx.fillStyle = ART.inkPattern(ctx);
       ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.2; ctx.stroke();
       if (stunned) {
         ctx.fillStyle = paintHex(m.stunColor);
         ctx.globalAlpha = 0.85;
@@ -813,6 +680,7 @@
       s: k, col: COLOR_HEX[game.color], t: game.tick / 60, run: runPhase, moving,
       air: !p.grounded && p.cling !== 2, face: wall ? p.cling : p.face, squash: p.cling ? 1 : squash,
     };
+    if (p.grounded && !p.cling) ART.shadow(ctx, p.x + p.w / 2, p.y + p.h, p.w * 0.6);
     ctx.save();
     if (p.cling === 2) {                      // hanging from a green ceiling: upside down, feet on the ceiling
       ctx.translate(p.x + p.w / 2, p.y);
@@ -931,6 +799,7 @@
     drawPlayer(w);
     SHOP.drawBurst(ctx, pops, look().pop);
     drawParticles();
+    ART.vignette(ctx);
     drawAim(w);
   }
 
@@ -954,8 +823,7 @@
   }
 
   function drawTitle() {
-    ctx.fillStyle = PAPER;
-    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(ART.plainPaper(), 0, 0);
     const splots = [[150, 120, BLUE, 90], [820, 150, RED, 105], [480, 480, GREEN, 115], [90, 440, YELLOW, 70], [880, 450, BLUE, 65], [300, 40, YELLOW, 45]];
     for (const [x, y, c, r] of splots) splotch(x, y, r, COLOR_HEX[c], x);
 
