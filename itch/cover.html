@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- itch.io cover art (630x500, drawn at 2x). Open via a local server and screenshot at 1260x1000. -->
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@700&display=swap" rel="stylesheet">
+<body style="margin:0;background:#111"><canvas id="c" width="1260" height="1000" style="display:block"></canvas>
+<script src="../levels.js"></script><script src="../world.js"></script><script src="../art.js"></script>
+<script src="../characters.js"></script><script src="../shop.js"></script>
+<script>
+const ctx = c.getContext('2d'); ctx.scale(2, 2);
+const CW = 630, CH = 500, INK = '#1c1c1f';
+const B = '#2f7bff', R = '#ff3b4e', G = '#1fc160', Y = '#ffc93c', P = '#9b5de5';
+const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+function splotch(x, y, r, col, seed, alpha = 1) {
+  const pts = []; for (let a = 0; a < 14; a++) { const ang = a / 14 * Math.PI * 2, rr = r * (0.72 + 0.28 * hash(a, seed)); pts.push([x + Math.cos(ang) * rr, y + Math.sin(ang) * rr]); }
+  ctx.globalAlpha = alpha; ctx.fillStyle = col; ctx.beginPath();
+  pts.forEach(([px, py], i) => { const [nx, ny] = pts[(i + 1) % pts.length]; const mx = (px + nx) / 2, my = (py + ny) / 2; i ? ctx.quadraticCurveTo(px, py, mx, my) : ctx.moveTo(mx, my); });
+  ctx.closePath(); ctx.fill();
+  for (let k = 0; k < 6; k++) { const a = hash(k, seed) * 6.28, d = r * (1.1 + hash(seed, k) * 0.5); ctx.beginPath(); ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, 2 + hash(k * 3, seed) * 6, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+document.fonts.load('900 10px Fredoka').finally(draw);
+function draw() {
+  ctx.drawImage(ART.plainPaper(), 0, 0, CW, CH);
+  // big watercolor splotches
+  splotch(70, 70, 95, B, 3, 0.9); splotch(590, 90, 85, R, 7, 0.9); splotch(560, 330, 60, Y, 11, 0.85); splotch(40, 300, 55, G, 5, 0.85); splotch(330, 20, 40, P, 9, 0.85);
+  // ground: an ink island, lava, another island
+  const ink = ART.inkPattern(ctx);
+  const block = (x, y, w, h) => { ctx.fillStyle = ink; ctx.fillRect(x, y, w, h); ctx.strokeStyle = INK; ctx.lineCap = 'round';
+    ART.inkLine(ctx, x, y, x + w, y, x | 0, 0.9, 3, 0); ART.inkLine(ctx, x, y, x, y + h, (x | 0) + 1, 0.9, 3, 0); ART.inkLine(ctx, x + w, y, x + w, y + h, (x | 0) + 2, 0.9, 3, 0); };
+  // lava pool
+  const ly = 445, lg = ctx.createLinearGradient(0, ly, 0, CH); lg.addColorStop(0, '#fff1a0'); lg.addColorStop(0.2, '#ffb703'); lg.addColorStop(0.6, '#ff6a00'); lg.addColorStop(1, '#c2410c');
+  const glow = ctx.createLinearGradient(0, ly - 70, 0, ly); glow.addColorStop(0, 'rgba(255,120,20,0)'); glow.addColorStop(1, 'rgba(255,120,20,0.35)');
+  ctx.fillStyle = glow; ctx.fillRect(220, ly - 70, 200, 70);
+  ctx.fillStyle = lg; ctx.beginPath(); ctx.moveTo(220, CH); for (let x = 220; x <= 420; x += 4) ctx.lineTo(x, ly + Math.sin(x * 0.12) * 3); ctx.lineTo(420, CH); ctx.fill();
+  for (let k = 0; k < 7; k++) { ctx.fillStyle = k % 2 ? '#ffd23f' : '#ff8c1a'; ctx.beginPath(); ctx.arc(235 + hash(k, 1) * 170, ly - 10 - hash(1, k) * 50, 1.6 + hash(k, k) * 1.5, 0, 7); ctx.fill(); }
+  block(-10, 420, 230, 100); block(420, 395, 230, 120);
+  // painted tops
+  const paintTop = (x, y, w, col) => { ctx.fillStyle = col; ctx.globalAlpha = 0.92; ctx.fillRect(x, y, w, 22); ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let k = 0; k < w / 3; k++) { ctx.beginPath(); ctx.arc(x + hash(k, w) * w, y + hash(w, k) * 22, 0.8 + hash(k, 2), 0, 7); ctx.fill(); }
+    ctx.strokeStyle = INK; ART.inkLine(ctx, x, y, x + w, y, w | 0, 0.9, 3, 0); };
+  paintTop(60, 420, 120, B); paintTop(470, 395, 100, R);
+  // tall painted pillar on the right, green
+  block(575, 250, 60, 160); ctx.fillStyle = G; ctx.globalAlpha = 0.92; ctx.fillRect(575, 250, 22, 145); ctx.globalAlpha = 1;
+  ctx.strokeStyle = INK; ART.inkLine(ctx, 575, 250, 575, 395, 9, 0.9, 3, 0); ART.inkLine(ctx, 575, 250, 640, 250, 10, 0.9, 3, 0);
+  // drips under the blue
+  ctx.fillStyle = B; for (const dx of [70, 120, 160]) { ctx.beginPath(); ctx.moveTo(dx - 3, 442); ctx.quadraticCurveTo(dx - 1, 455, dx - 2, 462); ctx.arc(dx, 462, 2.6, Math.PI, 0, true); ctx.quadraticCurveTo(dx + 1, 455, dx + 3, 442); ctx.fill(); }
+  // monsters
+  const inky = (x, y, s, hat) => {
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    ART.shadow(ctx, 0, 0, 14);
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(-6, -1, 5, 3, 0, 0, 7); ctx.ellipse(6, -1, 5, 3, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-12, -3); ctx.quadraticCurveTo(-14, -26, 0, -27); ctx.quadraticCurveTo(14, -26, 12, -3); ctx.closePath(); ctx.fillStyle = ink; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 2.2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-4.5, -15, 4, 0, 7); ctx.arc(4.5, -15, 4, 0, 7); ctx.fill();
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(-6, -14.5, 2, 0, 7); ctx.arc(3, -14.5, 2, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-9, -22); ctx.lineTo(-3, -19.5); ctx.moveTo(9, -22); ctx.lineTo(3, -19.5); ctx.stroke();
+    if (hat) { ctx.fillStyle = hat; ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.fillRect(-15, -28, 30, 5); ctx.strokeRect(-15, -28, 30, 5); ctx.fillRect(-9, -44, 18, 16); ctx.strokeRect(-9, -44, 18, 16); ctx.fillStyle = INK; ctx.fillRect(-9, -33, 18, 3); }
+    ctx.restore();
+  };
+  inky(520, 395, 1.5, null); inky(605, 250, 1.4, Y);
+  // paint arc from the hero
+  const hx = 112, hy = 372;
+  ctx.fillStyle = 'rgba(47,123,255,0.5)';
+  for (let k = 1; k < 14; k++) { const t = k / 14, x = hx + 28 + t * 310, y = hy - 40 - Math.sin(t * Math.PI) * 60 + t * 50; ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 7); ctx.fill(); }
+  ctx.fillStyle = R; ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(hx + 345, hy + 12, 7, 0, 7); ctx.fill(); ctx.stroke();
+  // hero mid-jump
+  ctx.save(); ctx.translate(hx, hy + 20);
+  SHOP.drawHero(ctx, CHARACTERS[0], { s: 2.1, col: B, t: 0.4, run: 1.2, moving: 1, air: true, face: 1, squash: 1 }, { hat: 'crown' });
+  ctx.restore();
+  // title
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const [word, y, size] of [['PAINT', 120, 118], ['RUNNER', 222, 118]]) {
+    ctx.font = `700 ${size}px Fredoka, ui-rounded, sans-serif`;
+    ctx.fillStyle = INK; for (let o = 1; o <= 7; o++) ctx.fillText(word, CW / 2 + o, y + o);
+    ctx.lineWidth = 9; ctx.strokeStyle = INK; ctx.lineJoin = 'round'; ctx.strokeText(word, CW / 2, y);
+    ctx.fillStyle = '#fff'; ctx.fillText(word, CW / 2, y);
+  }
+  // paint dripping off the title letters
+  const drip = (x, y, len, col) => { ctx.fillStyle = col; ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.quadraticCurveTo(x - 3, y + len * 0.6, x - 4, y + len); ctx.arc(x, y + len, 4.5, Math.PI, 0, true); ctx.quadraticCurveTo(x + 3, y + len * 0.6, x + 5, y); ctx.fill(); ctx.stroke(); };
+  drip(132, 262, 12, B); drip(262, 262, 34, R); drip(380, 262, 20, G); drip(500, 262, 28, Y);
+  ctx.font = '700 26px Fredoka, ui-rounded, sans-serif'; ctx.fillStyle = INK; ctx.fillText('Throw paint. Change the world.', CW / 2 + 20, 318);
+  ART.vignette(ctx);
+}
+</script>

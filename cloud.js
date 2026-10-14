@@ -138,6 +138,9 @@ const Cloud = (() => {
     publicName,
     levelKey,
     onChange(fn) { listeners.add(fn); fn(user); return () => listeners.delete(fn); },
+    // true when the game runs inside another page, e.g. on itch.io
+    embedded: (() => { try { return window.top !== window.self; } catch (e) { return true; } })(),
+    HOME_URL: 'https://filossof.github.io/paintrunner/',
 
     async signIn() {
       if (!available) throw new Error('offline');
@@ -146,6 +149,9 @@ const Cloud = (() => {
       try {
         await auth.signInWithPopup(provider);
       } catch (e) {
+        const cantPopup = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/unauthorized-domain', 'auth/web-storage-unsupported'].includes(e.code);
+        // inside another site's frame (itch.io) a redirect would leave the game, and Google won't load in a frame
+        if (cantPopup && Cloud.embedded) { const err = new Error('embedded'); err.code = 'embedded'; throw err; }
         if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return auth.signInWithRedirect(provider);
         if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return null;
         throw e;

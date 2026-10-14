@@ -1,0 +1,26 @@
+<!doctype html><body style="margin:0;overflow:hidden"><iframe id="f" style="width:100vw;height:100vh;border:0"></iframe>
+<script>
+const n = +location.hash.slice(1);
+f.src = 'index.html#level=' + n;
+let seed = n * 977 + 13; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+setTimeout(() => {
+  const d = f.contentWindow, g = d.paintRunner.game, w = g.world, lv = w.level;
+  const cols = lv.colors.filter((c) => c !== 5);
+  // exposed top surfaces
+  const tops = [];
+  for (let r = 1; r < 16; r++) for (let c = 1; c < 29; c++) if (lv.tiles[r][c] === '#' && !w.solid(c, r - 1) && lv.tiles[r - 1][c] !== 'L') tops.push([c, r]);
+  // paint a few runs
+  for (let k = 0; k < 4 && cols.length; k++) {
+    const [c, r] = tops[Math.floor(rnd() * tops.length)], col = cols[k % cols.length], len = 2 + Math.floor(rnd() * 3);
+    for (let i = 0; i < len; i++) if (lv.tiles[r][c + i] === '#' && !w.solid(c + i, r - 1)) lv.paint[r][c + i] = col;
+  }
+  if (lv.colors.includes(5) && tops.length > 4) { const a = tops[Math.floor(rnd() * tops.length)], b = tops[Math.floor(rnd() * tops.length)]; w.portals = [{ c: a[0], r: a[1], face: 'top' }, { c: b[0], r: b[1], face: 'top' }]; }
+  // splatters: blobs landing around the level
+  const all = lv.colors;
+  for (let k = 0; k < 14; k++) {
+    const [c, r] = tops[Math.floor(rnd() * tops.length)], col = all[k % all.length] === 5 ? all[0] : all[k % all.length];
+    w.blobs.push({ x: c * 32 + 16 + (rnd() - 0.5) * 20, y: r * 32 - 60, vx: (rnd() - 0.5) * 2, vy: 8, color: col, owner: 'player' });
+  }
+  setTimeout(() => { const p = w.player; w.blobs.push({ x: p.x + p.w / 2 + 40, y: p.y - 10, vx: 9, vy: -6, color: cols[0] || 1, owner: 'player' }); }, 1100);
+}, 700);
+</script>

@@ -152,7 +152,7 @@
     sfx.select();
   }
 
-  function showToast(str) { game.toast = { str, t: 90 }; }
+  function showToast(str, ms = 1500) { game.toast = { str, t: Math.round(ms / 1000 * 60) }; }
 
   function burst(x, y, color, n, speed = 4, size = 4) {
     for (let i = 0; i < n; i++) {
@@ -784,7 +784,8 @@
     if (game.toast) {
       ctx.globalAlpha = Math.min(1, game.toast.t / 20);
       ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      roundRect(W / 2 - 90, 44, 180, 32, 10); ctx.fill();
+      const tw = Math.max(180, game.toast.str.length * 8 + 30);
+      roundRect(W / 2 - tw / 2, 44, tw, 32, 10); ctx.fill();
       text(game.toast.str, W / 2, 60, 15, '#fff', 'center');
       ctx.globalAlpha = 1;
     }
@@ -992,7 +993,8 @@
   }
 
   // Handy for poking at the game from the browser console.
-  window.paintRunner = { game, startLevel };
+  // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
+  window.paintRunner = { game, startLevel, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
 
   if (typeof UI !== 'undefined') {
     UI.init({

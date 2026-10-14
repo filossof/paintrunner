@@ -33,7 +33,7 @@ const UI = (() => {
       `<button class="btn" data-act="chars">🎭 Characters <small>(C)</small></button>` +
       `<button class="btn" data-act="store">🛍️ Store <small>(S)</small></button>` +
       `<button class="btn" data-act="full" title="Full screen (F)">⛶ Full screen <small>(F)</small></button>` +
-      (Cloud.isAdmin ? `<a class="btn small" href="stats.html" target="_blank" rel="noopener">📊 Stats</a>` : '');
+      (Cloud.isAdmin ? `<a class="btn small" href="${Cloud.HOME_URL}stats.html" target="_blank" rel="noopener">📊 Stats</a>` : '');
     overlay.innerHTML = `<div class="corner left">${left}</div><div class="corner">${right}</div>`;
   }
 
@@ -54,7 +54,8 @@ const UI = (() => {
       await Cloud.signIn();
     } catch (e) {
       console.error(e);
-      api.toast('Sign-in failed');
+      if (e.code === 'embedded') api.toast('Sign-in is blocked on this page. Play at filossof.github.io/paintrunner to sign in.', 6000);
+      else api.toast('Sign-in failed');
     }
   }
 
