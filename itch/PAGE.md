@@ -26,7 +26,7 @@ Monsters play by the same rules. Paint the floor under an Inky and watch it race
 - 45 hand-made levels across 5 painted worlds, plus a lava-filled finale
 - 3 paint cans to collect in every level, 135 stars in all
 - No checkpoints. Every level is a short, sharp run you can master
-- Online leaderboards for fastest time, fastest 3-can run and fewest throws (sign in with Google)
+- Online leaderboards for fastest time, fastest 3-can run and fewest throws
 - 12 unlockable characters, from Ink Blob to Paint Drop
 - A cosmetic store with 40 hats, trails, colors, splats, flags and effects, bought with Paint Drops you earn by playing (nothing pay-to-win, no real money)
 - Original soundtrack
@@ -39,6 +39,8 @@ Monsters play by the same rules. Paint the floor under an Inky and watch it race
 - R: restart · Esc: menu · M: music · F: full screen
 
 Best played with a keyboard and mouse.
+
+**Sign in with Google to play.** Your progress, stars and Paint Drops are saved to your account and follow you to any computer. Leaderboards only show your first name and last initial. If your browser blocks sign-in inside this page, use the "Open the game in a new tab" link in the game.
 
 **Free to play.** If you enjoy it, a tip helps a lot and tells me to keep making more worlds. 💛
 

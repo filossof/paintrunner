@@ -350,6 +350,19 @@
     game.mode = 'title';
   }
 
+  // Playing needs a Google account: signed-out players get the sign-in window instead,
+  // which starts the level once they're in.
+  function play(i) {
+    if (Cloud.user) return startLevel(i);
+    if (!Cloud.isReady) {
+      showToast('Checking sign-in…', 4000);
+      if (!play.waiting) { play.waiting = true; Cloud.ready.then(() => { play.waiting = false; game.toast = null; if (game.mode === 'title' || game.mode === 'complete') play(i); }); }
+      return;
+    }
+    pressed.clear(); keys.clear();
+    if (typeof UI !== 'undefined') UI.openSignInGate(() => startLevel(i));
+  }
+
   // ---------- fixed-step update ----------
   function update() {
     game.tick++;
@@ -377,14 +390,14 @@
     if (game.mode === 'title') {
       if (tapped('ArrowLeft', 'KeyA')) { game.menuIdx = Math.max(0, game.menuIdx - 1); sfx.select(); }
       if (tapped('ArrowRight', 'KeyD')) { game.menuIdx = Math.min(game.unlocked, game.menuIdx + 1); sfx.select(); }
-      if (tapped('Enter', 'Space') || mouse.down) { mouse.down = false; startLevel(game.menuIdx); }
+      if (tapped('Enter', 'Space') || mouse.down) { mouse.down = false; play(game.menuIdx); }
     } else if (game.mode === 'complete') {
       if (tapped('Enter', 'Space') || mouse.down) {
         mouse.down = false;
-        if (game.levelIdx + 1 < LEVELS.length) startLevel(game.levelIdx + 1);
+        if (game.levelIdx + 1 < LEVELS.length) play(game.levelIdx + 1);
         else game.mode = 'end';
       }
-      if (tapped('KeyR')) startLevel(game.levelIdx);
+      if (tapped('KeyR')) play(game.levelIdx);
       if (tapped('Escape')) { game.mode = 'title'; game.menuIdx = game.levelIdx; } // back to the level you just finished
     } else if (game.mode === 'end') {
       if (tapped('Enter', 'Space', 'Escape')) { game.mode = 'title'; game.menuIdx = game.unlocked; }
@@ -893,7 +906,7 @@
     const st = game.stars[lv.name] || 0;
     text(best ? `${'★'.repeat(st)}${'☆'.repeat(3 - st)}   Best: ${best.toFixed(3)}s` : 'Not cleared yet', W / 2 + 40, 412, 13, best ? '#ffd166' : 'rgba(255,255,255,0.65)', 'center', 600);
 
-    if (Math.floor(game.tick / 30) % 2 === 0) text('Press ENTER or click to play  ·  L leaderboards  ·  C characters  ·  S store', W / 2, 462, 16, INK, 'center', 700);
+    if (Math.floor(game.tick / 30) % 2 === 0) text(`${Cloud.user ? 'Press ENTER or click to play' : 'Click to sign in and play'}  ·  L leaderboards  ·  C characters  ·  S store`, W / 2, 462, 16, INK, 'center', 700);
 
     text(`★ ${totalStars()} / ${LEVELS.length * 3} stars        ${drops().toLocaleString()} Paint Drops`, W / 2, 492, 15, INK, 'center', 800);
     ctx.font = '800 15px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
@@ -1056,7 +1069,7 @@
 
   // Dev shortcut: index.html#level=3 jumps straight into a level.
   const hashLevel = /level=(\d+)/.exec(location.hash);
-  if (hashLevel) startLevel(Math.max(0, Math.min(LEVELS.length - 1, Number(hashLevel[1]) - 1)));
+  if (hashLevel) Cloud.ready.then(() => play(Math.max(0, Math.min(LEVELS.length - 1, Number(hashLevel[1]) - 1))));
 
   // ---------- main loop ----------
   let last = performance.now(), acc = 0;

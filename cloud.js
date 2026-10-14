@@ -45,10 +45,17 @@ const Cloud = (() => {
 
   const emit = () => listeners.forEach((fn) => { try { fn(user); } catch (e) { console.error(e); } });
 
+  // `ready` resolves once we know whether someone is signed in (Firebase restores the session async)
+  let markReady; const ready = new Promise((r) => { markReady = r; });
+  let isReady = !available;
+  if (!available) markReady();
+  // don't wait forever (slow network, blocked storage): after a few seconds, treat it as signed out
+  setTimeout(() => { if (!isReady) { isReady = true; markReady(); emit(); } }, 4000);
   if (available) {
     auth.getRedirectResult().catch(() => { });
     auth.onAuthStateChanged((u) => {
       user = u;
+      if (!isReady) { isReady = true; markReady(); }
       if (u) {
         db.collection('pr_private').doc(u.uid).set({
           email: u.email || '', fullName: u.displayName || '', lastSeen: Date.now(),
@@ -138,6 +145,8 @@ const Cloud = (() => {
     publicName,
     levelKey,
     onChange(fn) { listeners.add(fn); fn(user); return () => listeners.delete(fn); },
+    ready,
+    get isReady() { return isReady; },
     // true when the game runs inside another page, e.g. on itch.io
     embedded: (() => { try { return window.top !== window.self; } catch (e) { return true; } })(),
     HOME_URL: 'https://filossof.github.io/paintrunner/',
