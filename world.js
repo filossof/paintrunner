@@ -27,7 +27,7 @@ const MONSTERS = {
   hat:  { w: 24, h: 28 },
 };
 const STUN_TIME = 180, SHOT_COOLDOWN = 150, SHOT_WARNING = 30;
-const TINY = 0.55;   // a monster shrunk by yellow paint (tiny monsters are harmless and squish on touch)
+const TINY = 0.55;   // a monster shrunk by yellow paint (it can't hurt a full-size player, but can still hurt a small one)
 
 function parseLevel(def) {
   if (def.map.length !== ROWS) throw new Error(`${def.name}: expected ${ROWS} rows, got ${def.map.length}`);
@@ -108,6 +108,7 @@ class World {
     this.blobs = [];
     this.tick = 0;      // drives platforms; keeps running while dead
     this.frame = 0;     // level timer
+    this.finishTime = null;   // seconds, to the millisecond, once the flag is reached
     this.throws = 0;
     this.state = 'play';
     this.timer = 0;
@@ -241,6 +242,7 @@ class World {
   }
 
   moveY(p, ignore = null) {
+    const oldY = p.y;
     p.y += p.vy;
     let hit = null;
     const c0 = Math.floor(p.x / T), c1 = Math.floor((p.x + p.w - 0.01) / T);
@@ -258,8 +260,11 @@ class World {
     }
     for (const pl of this.platforms) {
       if (pl === ignore || !overlap(p.x, p.y, p.w, p.h, pl.x, pl.y, pl.w, pl.h)) continue;
-      if (p.vy > 0) { p.y = pl.y - p.h; hit = { side: 1, color: pl.color, plat: pl }; }
-      else if (p.vy < 0) { p.y = pl.y + pl.h; hit = { side: -1, color: pl.color, plat: pl }; }
+      // only land on (or bump into) a platform we were above (or below) a moment ago:
+      // one that came down on top of us is a squash, handled in stepPlatforms
+      const oldTop = pl.y - (pl.dy || 0);
+      if (p.vy > 0 && oldY + p.h <= oldTop + 1) { p.y = pl.y - p.h; hit = { side: 1, color: pl.color, plat: pl }; }
+      else if (p.vy < 0 && oldY >= oldTop + pl.h - 1) { p.y = pl.y + pl.h; hit = { side: -1, color: pl.color, plat: pl }; }
     }
     return hit;
   }
@@ -761,9 +766,8 @@ class World {
         m.alive = false;
         p.vy = -9; p.canCut = false; p.grounded = false;
         this.events.push({ type: 'stomp', x: m.x + m.w / 2, y: m.y + m.h / 2 });
-      } else if (m.size === 'small') {
-        m.alive = false;                     // tiny monsters are harmless: walking into one squishes it
-        this.events.push({ type: 'stomp', x: m.x + m.w / 2, y: m.y + m.h / 2 });
+      } else if (m.size === 'small' && p.size === 'big') {
+        // a tiny monster (yellow) can't hurt a full-size player; it only bumps harmlessly
       } else {
         this.die();
         return;
@@ -779,14 +783,30 @@ class World {
 
     const f = this.level.flag;
     if (overlap(p.x, p.y, p.w, p.h, f.c * T + 4, f.r * T - T, T - 8, T * 2)) {
+      this.finishTime = (this.frame - 1 + this.flagEntry(p, f.c * T + 4, f.r * T - T, T - 8, T * 2)) / 60;
       this.state = 'won';
       this.timer = 0;
       this.events.push({ type: 'win', x: f.c * T + T / 2, y: f.r * T });
     }
   }
 
+  // How far through this frame (0..1) the player first touched the flag, assuming straight-line
+  // movement, so finish times are exact to the millisecond rather than to the nearest 1/60 s.
+  flagEntry(p, fx, fy, fw, fh) {
+    const dx = p.x - this.startX, dy = p.y - this.startY;
+    if (Math.hypot(dx, dy) > 3 * T) return 1;            // a teleport: no straight path to measure
+    const enter = (pos, d, size, lo, len) => {           // when the moving interval [pos, pos+size] starts to overlap [lo, lo+len]
+      const s0 = pos - d;
+      if (s0 + size > lo && s0 < lo + len) return 0;      // already overlapping on this axis
+      if (!d) return 1;
+      return Math.min(1, Math.max(0, (d > 0 ? lo - (s0 + size) : (lo + len) - s0) / d));
+    };
+    return Math.max(enter(p.x, dx, p.w, fx, fw), enter(p.y, dy, p.h, fy, fh));
+  }
+
   step(inp) {
     this.tick++;
+    this.startX = this.player.x; this.startY = this.player.y;   // where this frame began (for the exact finish time)
     this.stepBlobs();
     this.stepPlatforms();
     this.stepMonsters();

@@ -217,7 +217,7 @@
 
   function completeLevel() {
     const w = game.world;
-    const time = w.frame / 60;
+    const time = Math.round((w.finishTime ?? w.frame / 60) * 1000) / 1000;
     const key = LEVELS[game.levelIdx].name;
     const prev = game.best[key];
     const isBest = !prev || time < prev;
@@ -763,7 +763,7 @@
     ctx.fillRect(0, 0, W, 30);
     text(`${game.levelIdx + 1} / ${LEVELS.length}   ${lv.name}`, 12, 15, 15, '#fff');
     w.cans.forEach((can, i) => drawCan(W / 2 - 22 + i * 22, 16, 0.75, can.got, can.got ? COLOR_HEX[ALL_COLORS[i]] : '#55555c'));
-    text(`${(w.frame / 60).toFixed(2)}s`, W - 12, 15, 15, '#fff', 'right');
+    text(`${(w.state === 'won' && w.finishTime !== null ? w.finishTime : w.frame / 60).toFixed(3)}s`, W - 12, 15, 15, '#fff', 'right');
     text(`R restart · Esc menu · M music ${Sound.musicOn ? 'on' : 'off'} · F full screen`, W - 80, 15, 12, 'rgba(255,255,255,0.55)', 'right', 500);
 
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -859,7 +859,7 @@
     });
     const best = game.best[lv.name];
     const st = game.stars[lv.name] || 0;
-    text(best ? `${'★'.repeat(st)}${'☆'.repeat(3 - st)}   Best: ${best.toFixed(2)}s` : 'Not cleared yet', W / 2 + 40, 412, 13, best ? '#ffd166' : 'rgba(255,255,255,0.65)', 'center', 600);
+    text(best ? `${'★'.repeat(st)}${'☆'.repeat(3 - st)}   Best: ${best.toFixed(3)}s` : 'Not cleared yet', W / 2 + 40, 412, 13, best ? '#ffd166' : 'rgba(255,255,255,0.65)', 'center', 600);
 
     if (Math.floor(game.tick / 30) % 2 === 0) text('Press ENTER or click to play  ·  L leaderboards  ·  C characters  ·  S store', W / 2, 462, 16, INK, 'center', 700);
 
@@ -962,7 +962,7 @@
           ['Level complete!', 46, '#fff', 900],
           ['', 34, '#ffd166', 900],   // the three paint cans are drawn across these two rows, below
           ['', 34, '#ffd166', 900],
-          [`Time ${r.time.toFixed(2)}s${r.isBest ? '  ★ new best' : ''}`, 21, r.isBest ? '#ffd166' : '#fff', 600],
+          [`Time ${r.time.toFixed(3)}s${r.isBest ? '  ★ new best' : ''}`, 21, r.isBest ? '#ffd166' : '#fff', 600],
           [`Paint thrown: ${r.throws}   ·   Falls: ${r.deaths}`, 16, 'rgba(255,255,255,0.75)', 500],
           [`+${shown}  Paint Drops`, 26, '#7cc4ff', 900],
           [e.rows.map(([label, n]) => `${label} +${n}`).join('   ·   '), 13, 'rgba(255,255,255,0.65)', 600],

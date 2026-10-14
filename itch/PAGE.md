@@ -20,7 +20,7 @@ Paint Runner is a hand-inked puzzle platformer. You can't jump high enough, run 
 - 🟡 **Yellow** - shrink to squeeze through tiny gaps (or grow back)
 - 🟣 **Purple** - open two portals and fly through with all your speed
 
-Monsters play by the same rules. Paint the floor under an Inky and watch it race, hop, get stuck, shrink to harmless size or wander into your portal. Hat-wearing monsters shoot paint back at you, and the white-hat Washer cleans your colors away.
+Monsters play by the same rules. Paint the floor under an Inky and watch it race, hop, get stuck, shrink down to size or wander into your portal. Hat-wearing monsters shoot paint back at you, and the white-hat Washer cleans your colors away.
 
 **What's inside**
 - 45 hand-made levels across 5 painted worlds, plus a lava-filled finale

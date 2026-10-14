@@ -77,14 +77,14 @@ const Cloud = (() => {
 
   const min = (a, b) => (a === undefined || a === null ? b : b === undefined || b === null ? a : Math.min(a, b));
   const dropUndefined = (o) => { Object.keys(o).forEach((k) => o[k] === undefined && delete o[k]); return o; };
-  const round2 = (t) => Math.round(t * 100) / 100;
+  const round3 = (t) => Math.round(t * 1000) / 1000;   // times are kept to the millisecond
 
   /* Merges one result into a score row. Returns the new row. */
   function mergeScore(old, r, countPlay) {
     const d = old || {};
     const now = Date.now();
-    const bestTime = round2(min(d.bestTime, r.time));
-    const best3Time = r.stars === 3 && r.time ? round2(min(d.best3Time, r.time)) : d.best3Time;
+    const bestTime = round3(min(d.bestTime, r.time));
+    const best3Time = r.stars === 3 && r.time ? round3(min(d.best3Time, r.time)) : d.best3Time;
     const fewestThrows = min(d.fewestThrows, r.throws);
     // When each record was set, so ties go to whoever got there first.
     // (Records from before this existed count as earliest: 0.)
@@ -165,8 +165,8 @@ const Cloud = (() => {
       await db.collection('pr_runs').add(dropUndefined({
         uid: user.uid, name: publicName(user),
         level: run.level, levelIdx: run.levelIdx, completed: !!run.completed,
-        time: round2(run.time), stars: run.stars || 0, throws: run.throws || 0, deaths: run.deaths || 0,
-        played: round2(run.played || run.time || 0),
+        time: round3(run.time), stars: run.stars || 0, throws: run.throws || 0, deaths: run.deaths || 0,
+        played: round3(run.played || run.time || 0),
         at: Date.now(),
       }));
     },
@@ -265,7 +265,7 @@ const Cloud = (() => {
         const s = await sref.get();
         const old = s.exists ? s.data() : null;
         const row = mergeScore(old, { level: l.name, levelIdx: i, time: p.t, stars: p.s, throws: p.th }, false);
-        if (p.t3 !== undefined) row.best3Time = round2(min(row.best3Time, p.t3));
+        if (p.t3 !== undefined) row.best3Time = round3(min(row.best3Time, p.t3));
         if (!old || row.bestTime !== old.bestTime || row.bestStars !== old.bestStars ||
             row.best3Time !== old.best3Time || row.fewestThrows !== old.fewestThrows) {
           await sref.set(row);
