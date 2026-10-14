@@ -43,6 +43,17 @@
   document.addEventListener('webkitfullscreenchange', resize);
   resize();
 
+  // Keyboard focus. Inside another page's frame (itch.io), that page's own buttons - like its full
+  // screen button - take the keyboard away from us. Clicking the game takes it back, and while we
+  // don't have it we say so.
+  const embedded = (() => { try { return window.top !== window.self; } catch (e) { return true; } })();
+  let hasFocus = document.hasFocus();
+  window.addEventListener('focus', () => { hasFocus = true; });
+  window.addEventListener('blur', () => { hasFocus = false; keys.clear(); });
+  const grabFocus = () => { try { window.focus(); } catch (e) { /* not allowed: the next click will do it */ } };
+  document.addEventListener('fullscreenchange', grabFocus);
+  document.addEventListener('webkitfullscreenchange', grabFocus);
+
   // Real full screen (hides the browser's bars). F toggles it.
   function toggleFullscreen() {
     const el = document.documentElement;
@@ -78,9 +89,14 @@
   canvas.addEventListener('mousemove', toGame);
   canvas.addEventListener('mousedown', (e) => {
     toGame(e); Sound.init();
+    // preventDefault below would stop the click from giving us the keyboard, so take it ourselves.
+    // A click that only brings the keyboard back doesn't throw paint (it would cost a throw).
+    const hadFocus = hasFocus;
+    grabFocus();
+    e.preventDefault();
+    if (embedded && !hadFocus) return;
     if (e.button === 0) mouse.down = true;
     if (e.button === 2) mouse.right = true;
-    e.preventDefault();
   });
   window.addEventListener('mouseup', (e) => {
     if (e.button === 0) mouse.down = false;
@@ -988,6 +1004,13 @@
           ['Press ENTER', 16, 'rgba(255,255,255,0.6)', 500],
         ]);
       }
+    }
+    if (embedded && !hasFocus) {
+      ctx.globalAlpha = 0.9 + Math.sin(game.tick * 0.08) * 0.1;
+      ctx.fillStyle = 'rgba(28,28,31,0.88)';
+      roundRect(W / 2 - 170, H / 2 - 26, 340, 52, 14); ctx.fill();
+      text('Click the game to use the keyboard', W / 2, H / 2, 18, '#fff', 'center', 800);
+      ctx.globalAlpha = 1;
     }
     drawCursor();
   }
