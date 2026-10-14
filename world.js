@@ -27,6 +27,7 @@ const MONSTERS = {
   hat:  { w: 24, h: 28 },
 };
 const STUN_TIME = 180, SHOT_COOLDOWN = 150, SHOT_WARNING = 30;
+const TINY = 0.55;   // a monster shrunk by yellow paint (tiny monsters are harmless and squish on touch)
 
 function parseLevel(def) {
   if (def.map.length !== ROWS) throw new Error(`${def.name}: expected ${ROWS} rows, got ${def.map.length}`);
@@ -125,6 +126,7 @@ class World {
         x: d.c * T + (T - size.w) / 2, y: d.r * T + T - size.h,
         vx: 0, vy: 0, dir: d.dir || 1, alive: true, grounded: false, groundColor: NONE,
         stun: 0, stunColor: NONE, cooldown: 60, warning: 0, range: (d.range || 11) * T,
+        size: 'big', yellowLatch: false, sizeCd: 0, preVx: 0, preVy: 0, portalLatch: false, portalCd: 0,
       };
     });
     this.cans = this.level.cans.map((c) => ({ ...c, got: false }));
@@ -182,8 +184,8 @@ class World {
   // A 1px strip just outside one side of the player.
   probe(p, side) {
     return {
-      left: [p.x - 1, p.y + 6, 1, p.h - 12],
-      right: [p.x + p.w, p.y + 6, 1, p.h - 12],
+      left: [p.x - 1, p.y + Math.min(6, p.h / 4), 1, Math.max(2, p.h - 12)],    // (tiny monsters are only 12 tall)
+      right: [p.x + p.w, p.y + Math.min(6, p.h / 4), 1, Math.max(2, p.h - 12)],
       up: [p.x + 2, p.y - 1, p.w - 4, 1],
       down: [p.x + 2, p.y + p.h, p.w - 4, 1],
     }[side];
@@ -331,6 +333,7 @@ class World {
             } else {
               m.stun = STUN_TIME; m.stunColor = b.color; m.warning = 0;
               this.events.push({ type: 'stun', x: nx, y: ny, color: b.color });
+              if (b.color === YELLOW && m.sizeCd === 0) this.toggleMonsterSize(m);
             }
             done = true;
             break;
@@ -438,11 +441,22 @@ class World {
   }
 
   // ---- monsters ----
+  // Yellow: a monster grows or shrinks (keeping its feet in place), if there's room.
+  toggleMonsterSize(m) {
+    const big = MONSTERS[m.type], size = m.size === 'big' ? 'small' : 'big';
+    const k = size === 'big' ? 1 : TINY, w = Math.round(big.w * k), h = Math.round(big.h * k);
+    const nx = m.x + m.w / 2 - w / 2, ny = m.y + m.h - h;
+    if (this.rectHitsSolid(nx, ny, w, h)) return false;
+    m.x = nx; m.y = ny; m.w = w; m.h = h; m.size = size; m.sizeCd = 20;
+    this.events.push({ type: size === 'small' ? 'shrink' : 'grow', x: m.x + m.w / 2, y: m.y + m.h / 2 });
+    return true;
+  }
+
   canSee(m, p) {
     const ex = m.x + m.w / 2, ey = m.y + 6;
     const tx = p.x + p.w / 2, ty = p.y + p.h / 2;
     const d = Math.hypot(tx - ex, ty - ey);
-    if (d > m.range) return false;
+    if (d > m.range * (m.size === 'small' ? 0.5 : 1)) return false;
     const steps = Math.ceil(d / 8);
     for (let i = 1; i < steps; i++) {
       const x = ex + (tx - ex) * i / steps, y = ey + (ty - ey) * i / steps;
@@ -475,12 +489,32 @@ class World {
         m.vx = 0;
       }
       m.vy = Math.min(m.vy + GRAV, MAX_FALL);
+      m.preVx = m.vx; m.preVy = m.vy;
       const hx = this.moveX(m);
       if (hx) m.dir = -m.dir;
       const hy = this.moveY(m);
       m.grounded = !!(hy && hy.side === 1);
       if (m.grounded) { m.vy = 0; m.groundColor = hy.color; }
       else if (hy) m.vy = 0;
+
+      // yellow ground: toggle size once per visit (like the player)
+      if (m.sizeCd > 0) m.sizeCd--;
+      const onYellow = m.grounded && m.groundColor === YELLOW;
+      if (!onYellow) m.yellowLatch = false;
+      else if (!m.yellowLatch && m.sizeCd === 0) { m.yellowLatch = true; this.toggleMonsterSize(m); }
+
+      // purple: monsters walk through your portals too
+      const touch = this.touchingPortal(m);
+      if (m.portalCd > 0) m.portalCd--;
+      if (!touch) m.portalLatch = false;
+      else if (m.portalCd > 0) m.portalLatch = true;
+      else if (!m.portalLatch && this.portals.length === 2) {
+        const other = this.portals.find((q) => q !== touch);
+        if (this.teleport(m, touch, other)) {
+          m.portalLatch = true; m.portalCd = 20;
+          if (m.vx) m.dir = Math.sign(m.vx);
+        }
+      }
 
       if (m.type === 'inky' && m.grounded && m.vx !== 0) {
         // turn around at ledges
@@ -726,6 +760,9 @@ class World {
         // stomp!
         m.alive = false;
         p.vy = -9; p.canCut = false; p.grounded = false;
+        this.events.push({ type: 'stomp', x: m.x + m.w / 2, y: m.y + m.h / 2 });
+      } else if (m.size === 'small') {
+        m.alive = false;                     // tiny monsters are harmless: walking into one squishes it
         this.events.push({ type: 'stomp', x: m.x + m.w / 2, y: m.y + m.h / 2 });
       } else {
         this.die();

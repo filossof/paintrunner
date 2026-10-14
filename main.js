@@ -595,7 +595,11 @@
       const warn = m.warning > 0;
       const shake = warn ? Math.sin(game.tick * 1.7) * 1.5 : 0;
       const step = stunned ? 0 : Math.sin(game.tick * 0.35 + m.x * 0.05);
-      const x = m.x + shake, y = m.y, mw = m.w, mh = m.h;
+      // tiny monsters (yellow) are drawn at full size, then scaled down around their feet
+      const big = MONSTERS[m.type], k = m.w / big.w;
+      ctx.save();
+      if (k !== 1) { ctx.translate(m.x + m.w / 2, m.y + m.h); ctx.scale(k, k); ctx.translate(-(m.x + m.w / 2), -(m.y + m.h)); }
+      const x = m.x + m.w / 2 - big.w / 2 + shake, y = m.y + m.h - big.h, mw = big.w, mh = big.h;
 
       ART.shadow(ctx, x + mw / 2, y + mh, mw * 0.55);
       // feet
@@ -660,6 +664,7 @@
           text('✦', x + mw / 2 + Math.cos(a) * 14, y - (m.type === 'hat' ? 26 : 6) + Math.sin(a) * 4, 10, '#ffd166', 'center', 900);
         }
       }
+      ctx.restore();
     }
   }
 

@@ -185,7 +185,7 @@ const UI = (() => {
       if (wl.drops < it.price.drops) return `<span class="buy poor">💧 ${fmtN(it.price.drops)} · need ${fmtN(it.price.drops - wl.drops)} more</span>`;
       return `<span class="buy" data-buy="${it.id}">💧 ${fmtN(it.price.drops)} · Buy</span>`;
     };
-    modal.querySelector('.items').innerHTML = SHOP.ITEMS.filter((i) => i.cat === storeTab).map((i) => `
+    modal.querySelector('.items').innerHTML = SHOP.ITEMS.filter((i) => i.cat === storeTab).sort((a, b) => a.price.drops - b.price.drops).map((i) => `
       <div class="item${trying === i.id ? ' trying-on' : ''}${wl.equipped[i.cat] === i.id ? ' is-equipped' : ''}" role="button" tabindex="0" data-try="${i.id}" aria-label="Try on ${esc(i.name)}">
         <canvas data-item="${i.id}" aria-hidden="true"></canvas>
         <span class="rarity r-${i.rarity}">${SHOP.RARITY[i.rarity]}</span>
