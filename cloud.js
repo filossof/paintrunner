@@ -158,6 +158,8 @@ const Cloud = (() => {
       }
     },
     signOut() { return auth && auth.signOut(); },
+    // resolves once every save started so far has reached the server
+    flush() { return pending; },
 
     /* A level was finished (completed=true) or abandoned. Logged for the stats dashboard. */
     async logRun(run) {

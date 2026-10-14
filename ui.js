@@ -43,7 +43,12 @@ const UI = (() => {
     // it again, e.g. leaving full screen. Blurring keeps the keyboard inside the game.
     if (btn && e.detail > 0) btn.blur();
     if (act === 'signin') signIn();
-    if (act === 'signout') { await Cloud.signOut(); api.toast('Signed out'); }
+    if (act === 'signout') {
+      await Cloud.flush().catch(() => { });     // finish saving to the account first
+      await Cloud.signOut();
+      api.resetProgress();
+      api.toast('Signed out. Your progress is saved in your account.', 3000);
+    }
     if (act === 'boards') openLeaderboard(api.currentLevel());
     if (act === 'full') api.toggleFullscreen();
     if (act === 'chars') openCharacters();

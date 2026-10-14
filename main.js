@@ -335,6 +335,21 @@
     store.set('unlocked', game.unlocked);
   }
 
+  // Signing out leaves this browser as a fresh guest. The account keeps everything,
+  // and signing in again brings it back.
+  function resetProgress() {
+    for (const k of ['bestByName', 'starsByName', 'best3ByName', 'fewestByName', 'unlocked', 'wallet', 'character']) {
+      try { localStorage.removeItem('paintRunner.' + k); } catch (e) { /* ignore */ }
+    }
+    Object.assign(game, {
+      best: {}, stars: {}, best3: {}, fewest: {}, character: 'blob', lastResult: null,
+      wallet: { earned: 0, spent: 0, owned: [], equipped: {}, equippedAt: 0, clears: {}, daily: '' },
+    });
+    refreshUnlocked();
+    game.menuIdx = 0;
+    game.mode = 'title';
+  }
+
   // ---------- fixed-step update ----------
   function update() {
     game.tick++;
@@ -1018,7 +1033,7 @@
 
   // Handy for poking at the game from the browser console.
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
-  window.paintRunner = { game, startLevel, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
+  window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
 
   if (typeof UI !== 'undefined') {
     UI.init({
@@ -1035,6 +1050,7 @@
       currentLevel: () => (game.mode === 'title' ? game.menuIdx : game.levelIdx),
       localProgress,
       applyProgress,
+      resetProgress,
     });
   }
 
