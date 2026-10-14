@@ -38,7 +38,10 @@ const UI = (() => {
   }
 
   overlay.addEventListener('click', async (e) => {
-    const act = e.target.closest('[data-act]')?.dataset.act;
+    const btn = e.target.closest('[data-act]'), act = btn?.dataset.act;
+    // after a mouse click, don't leave the keyboard on the button: Enter or Space (jump!) would press
+    // it again, e.g. leaving full screen. Blurring keeps the keyboard inside the game.
+    if (btn && e.detail > 0) btn.blur();
     if (act === 'signin') signIn();
     if (act === 'signout') { await Cloud.signOut(); api.toast('Signed out'); }
     if (act === 'boards') openLeaderboard(api.currentLevel());

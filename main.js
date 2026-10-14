@@ -52,6 +52,7 @@
   window.addEventListener('blur', () => { hasFocus = false; keys.clear(); });
   const grabFocus = () => { try { window.focus(); } catch (e) { /* not allowed: the next click will do it */ } };
   document.addEventListener('fullscreenchange', grabFocus);
+  if (embedded) window.addEventListener('resize', grabFocus);   // the page around us made us full screen (or back)
   document.addEventListener('webkitfullscreenchange', grabFocus);
 
   // Real full screen (hides the browser's bars). F toggles it.
@@ -94,7 +95,7 @@
     const hadFocus = hasFocus;
     grabFocus();
     e.preventDefault();
-    if (embedded && !hadFocus) return;
+    if (embedded && !hadFocus && game.mode === 'play') return;
     if (e.button === 0) mouse.down = true;
     if (e.button === 2) mouse.right = true;
   });
