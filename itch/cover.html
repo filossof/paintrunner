@@ -75,7 +75,8 @@ function draw() {
   }
   // paint dripping off the title letters
   const drip = (x, y, len, col) => { ctx.fillStyle = col; ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.quadraticCurveTo(x - 3, y + len * 0.6, x - 4, y + len); ctx.arc(x, y + len, 4.5, Math.PI, 0, true); ctx.quadraticCurveTo(x + 3, y + len * 0.6, x + 5, y); ctx.fill(); ctx.stroke(); };
-  drip(132, 262, 12, B); drip(262, 262, 34, R); drip(380, 262, 20, G); drip(500, 262, 28, Y);
+  // centered on letter strokes measured at the baseline: R's left leg, first N's left leg, second N's right leg, last R's left leg
+  drip(104, 258, 16, B); drip(254, 258, 36, R); drip(384, 258, 24, G); drip(484, 258, 30, Y);
   ctx.font = '700 26px Fredoka, ui-rounded, sans-serif'; ctx.fillStyle = INK; ctx.fillText('Throw paint. Change the world.', CW / 2 + 20, 318);
   ART.vignette(ctx);
 }
