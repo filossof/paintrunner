@@ -16,6 +16,7 @@
 html, body {
   margin: 0;
   height: 100%;
+  height: 100dvh;              /* the visible height on phones, whether the address bar shows or not */
   background: #0b0b0d;
   overflow: hidden;
   font-family: var(--font);
@@ -256,3 +257,7 @@ body.touch .btn small { display: none; }               /* keyboard shortcuts mea
 .tbtn[data-k="ArrowLeft"] { left: 8px; }
 .tbtn[data-k="ArrowRight"] { left: calc(var(--tb) + 18px); }
 .tbtn.jump { right: 10px; }
+
+/* touch devices: no zooming, double-tap zoom or page scrolling while playing (windows can still scroll) */
+body.touch { touch-action: none; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+body.touch .modal-back { touch-action: pan-y; }

@@ -38,13 +38,18 @@
   function resize() {
     dpr = window.devicePixelRatio || 1;
     touchButtonSize();
-    scale = Math.min(window.innerWidth / W, window.innerHeight / H); // as big as fits, same shape
+    // as big as fits the visible screen, same shape (phones: the visible area, not the "full" height
+    // that includes space under the address bar)
+    const vv = window.visualViewport, vw = vv ? vv.width : window.innerWidth, vh = vv ? vv.height : window.innerHeight;
+    document.body.style.height = vh + 'px';
+    scale = Math.min(vw / W, vh / H);
     canvas.style.width = Math.floor(W * scale) + 'px';
     canvas.style.height = Math.floor(H * scale) + 'px';
     canvas.width = Math.floor(W * scale * dpr);
     canvas.height = Math.floor(H * scale * dpr);
   }
   window.addEventListener('resize', resize);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
   document.addEventListener('fullscreenchange', resize);
   document.addEventListener('webkitfullscreenchange', resize);
   resize();
@@ -137,14 +142,23 @@
   const touchAim = () => [...touches.values()].some((t) => t.role === 'aim');
   const toGamePt = (t) => { const r = canvas.getBoundingClientRect(); return { x: (t.clientX - r.left) / r.width * W, y: (t.clientY - r.top) / r.height * H }; };
   const onCanvas = (t) => { const r = canvas.getBoundingClientRect(); return t.clientX >= r.left && t.clientX <= r.right && t.clientY >= r.top && t.clientY <= r.bottom; };
-  const hitBtn = (t, el) => { const r = el.getBoundingClientRect(), m = 12; return t.clientX >= r.left - m && t.clientX <= r.right + m && t.clientY >= r.top - m && t.clientY <= r.bottom + m; };
+  // Forgiving touch zones around the buttons: anything from the screen's left edge to a bit past ▶,
+  // from a bit above the buttons down to the bottom, moves; the same at the right edge jumps.
+  function inMoveZone(t) {
+    const l = padBtn('ArrowLeft').getBoundingClientRect(), r = padBtn('ArrowRight').getBoundingClientRect();
+    return t.clientX <= r.right + 20 && t.clientY >= Math.min(l.top, r.top) - l.height * 0.6;
+  }
+  function inJumpZone(t) {
+    const j = padBtn('Space').getBoundingClientRect();
+    return t.clientX >= j.left - 24 && t.clientY >= j.top - j.height * 0.6;
+  }
   const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y - 4 && p.y <= b.y + b.h + 6;
   // the color chips in the bottom bar (and the wash chip after them), as drawn by drawHud
   // where the color chips start: in touch mode, just right of the ▶ button so it never covers one
   function chipStartX() {
     if (!touchMode || !pad.classList.contains('show')) return 12;
     const b = padBtn('ArrowRight').getBoundingClientRect(), r = canvas.getBoundingClientRect();
-    return Math.max(12, Math.ceil((b.right - r.left) / r.width * W) + 10);
+    return Math.max(12, Math.ceil((b.right + 28 - r.left) / r.width * W));   // past the ▶ touch zone
   }
   function chipAt(p) {
     if (!game.world || p.y < H - 40) return null;
@@ -185,8 +199,8 @@
           continue;
         }
         let role = 'none';
-        if (hitBtn(t, padBtn('ArrowLeft')) || hitBtn(t, padBtn('ArrowRight'))) role = 'move';
-        else if (hitBtn(t, padBtn('Space'))) role = 'jump';
+        if (inMoveZone(t)) role = 'move';
+        else if (inJumpZone(t)) role = 'jump';
         else if (onCanvas(t)) {
           if (inRect(p, TOUCH.menu)) pressed.add('Escape');
           else if (inRect(p, TOUCH.restart)) pressed.add('KeyR');
