@@ -431,3 +431,37 @@ body.touch .store-stage.open .sheet-info { display: grid; gap: 10px; justify-ite
 #touchpad.joystick .tbtn.mini { bottom: calc(12px + var(--tb) * 1.75 + 12px); }
 #touchpad.joystick .tbtn[data-k="Escape"] { left: 12px; }
 #touchpad.joystick .tbtn[data-k="KeyR"] { left: calc(22px + var(--tb) * 0.6); }
+
+/* ---------- control schemes (🎮 Controls on the menu) ---------- */
+#touchpad .joy.joy-r { display: none; left: auto; right: 10px; }
+#touchpad[data-scheme^="twin"] .joy.joy-r { display: block; }
+/* the palette sits above the right stick */
+#touchpad[data-scheme^="twin"] .palette { right: calc(10px + var(--tb) * 0.465); bottom: calc(12px + var(--tb) * 1.75 + 16px); }
+/* Twin Tap: jumping is a tap on the right stick */
+#touchpad[data-scheme="twintap"] .tbtn.jump { display: none; }
+/* Twin Stick: a JUMP button just left of the right stick */
+#touchpad[data-scheme="twinstick"] .tbtn.jump {
+  right: calc(10px + var(--tb) * 1.75 + 12px); bottom: 14px;
+  width: calc(var(--tb) * 0.9); height: calc(var(--tb) * 0.9); font-size: calc(var(--tb) * 0.3);
+}
+/* the picker */
+.ctl-list { display: grid; gap: 12px; }
+.ctl {
+  display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: center; text-align: left; width: 100%;
+  padding: 12px; border: 2px solid var(--ink); border-radius: 14px; background: #fff; color: var(--ink); cursor: pointer;
+  font: 600 14px var(--font); box-shadow: 3px 3px 0 var(--ink);
+}
+.ctl[aria-checked="true"] { background: #fff6d6; border-color: var(--gold); box-shadow: 3px 3px 0 var(--gold); }
+.ctl h3 { margin: 0 0 4px; font: 800 17px var(--font); }
+.ctl p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.35; }
+.ctl .chk { font-size: 12px; font-weight: 800; color: #138a4b; }
+.ctl-pic { position: relative; height: 76px; border-radius: 10px; background: #1c1c1f; overflow: hidden; }
+.ctl-pic::before { content: ''; position: absolute; left: 18%; right: 18%; top: 10%; bottom: 10%; background: #efece4; border-radius: 3px; }
+.ctl-pic i { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,0.85); background: rgba(255,255,255,0.15);
+  display: grid; place-items: center; font: 800 9px var(--font); font-style: normal; color: #fff; text-shadow: 0 1px 2px #000; }
+.ctl-pic .stick { width: 34px; height: 34px; bottom: 4px; }
+.ctl-pic .stick.l { left: 4px; } .ctl-pic .stick.r { right: 4px; }
+.ctl-pic .btn-j { width: 22px; height: 22px; bottom: 6px; }
+.ctl-pic .tap { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); font-size: 18px; }
+@media (max-width: 520px) { .ctl { grid-template-columns: 1fr; } }
+body:not(.touch) [data-act="controls"] { display: none; }

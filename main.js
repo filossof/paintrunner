@@ -138,25 +138,50 @@
     // Menu and Restart live down here, not in the top bar: on itch.io's mobile page its own toolbar covers the top edge
     '<div class="tbtn mini" data-k="Escape" aria-label="Menu">☰</div><div class="tbtn mini" data-k="KeyR" aria-label="Restart">↺</div>' +
     '<div class="joy" aria-hidden="true"><i class="joy-knob"></i></div>' +
+    '<div class="joy joy-r" aria-hidden="true"><i class="joy-knob"></i></div>' +   // Twin Tap / Twin Stick: aiming
     '<div class="tbtn jump" data-k="Space">▲<small>JUMP</small></div>' +
     '<div class="palette"><div class="pal-btn" aria-label="Choose a color"></div></div>';
   if (touchMode) document.body.appendChild(pad);
   const padBtn = (k) => pad.querySelector(`[data-k="${k}"]`);
-  // Moving: a joystick (default) or four direction buttons (add #dpad to the address)
-  const useJoystick = !/[#&?]dpad/.test(location.href);
-  pad.classList.toggle('joystick', useJoystick);
-  const joy = pad.querySelector('.joy'), knob = pad.querySelector('.joy-knob');
+  // Three control schemes, chosen in 🎮 Controls on the menu (saved on this device):
+  //   classic   - joystick moves, JUMP button, touch the level to throw (hold to keep throwing)
+  //   twintap   - left stick moves (tap it to throw, hold to keep throwing); right stick aims (tap it to jump)
+  //   twinstick - left stick moves; right stick aims and throws while pushed; JUMP button beside it
+  // In every scheme, touching the level still throws at that spot.
+  // Classic can use four direction buttons instead of the stick: add #dpad to the address.
+  const SCHEMES = ['classic', 'twintap', 'twinstick'];
+  let scheme = (() => { try { const s = localStorage.getItem('paintRunner.controls'); return SCHEMES.includes(s) ? s : 'classic'; } catch (e) { return 'classic'; } })();
+  const dpadWanted = /[#&?]dpad/.test(location.href);
+  const twin = () => scheme !== 'classic';
+  const stickMode = () => twin() || !dpadWanted;
+  function applyScheme() {
+    pad.dataset.scheme = scheme;
+    pad.classList.toggle('joystick', stickMode());
+  }
+  const joy = pad.querySelector('.joy:not(.joy-r)'), knob = joy.querySelector('.joy-knob');
+  const joyR = pad.querySelector('.joy-r'), knobR = joyR.querySelector('.joy-knob');
+  applyScheme();
+  function setScheme(s) {
+    if (!SCHEMES.includes(s)) return;
+    scheme = s;
+    try { localStorage.setItem('paintRunner.controls', s); } catch (e) { /* ignore */ }
+    touches.clear(); stickFiring = false; tapFire = 0; mouse.down = mouse.right = false;
+    applyScheme(); syncTouchKeys();
+  }
   const touches = new Map();          // touch id -> { role, sx, sy (screen), x, y (game) }
   const touchKeys = new Set();        // keys currently held down by touch buttons
   let touchWash = false;              // the 🧽 chip: throws wash paint off instead of painting
-  const touchAim = () => [...touches.values()].some((t) => t.role === 'aim');
+  let aimAngle = null;                // the right stick's aim (radians); null = forward and a bit up
+  let jumpTapUntil = 0;               // Twin Tap: hold JUMP this long after a tap on the right stick
+  let stickFiring = false;            // a stick is throwing paint right now (Twin Tap hold / Twin Stick push)
+  const touchAim = () => [...touches.values()].some((t) => t.role === 'aim' || (t.role === 'raim' && t.moved)) || stickFiring;
   const toGamePt = (t) => { const r = canvas.getBoundingClientRect(); return { x: (t.clientX - r.left) / r.width * W, y: (t.clientY - r.top) / r.height * H }; };
   const onCanvas = (t) => { const r = canvas.getBoundingClientRect(); return t.clientX >= r.left && t.clientX <= r.right && t.clientY >= r.top && t.clientY <= r.bottom; };
   // Forgiving touch zones around the buttons: anything from the screen's left edge to a bit past ▶,
   // from a bit above the buttons down to the bottom, moves; the same at the right edge jumps.
   const DIRS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
   function inMoveZone(t) {
-    if (useJoystick) {        // anywhere in the bottom-left corner grabs the stick
+    if (stickMode()) {        // anywhere in the bottom-left corner grabs the stick
       const j = joy.getBoundingClientRect();
       return t.clientX <= j.right + 30 && t.clientY >= j.top - 30;
     }
@@ -166,9 +191,26 @@
   // The joystick: where the thumb is, relative to the middle of the ring, gives the directions.
   // Up/down need a firmer push than left/right, so running never presses "down" by accident
   // (down stops blue bounces).
+  // the right stick's corner (Twin Tap / Twin Stick)
+  function inAimZone(t) {
+    const j = joyR.getBoundingClientRect();
+    return twin() && t.clientX >= j.left - 30 && t.clientY >= j.top - 30;
+  }
+  // How far a stick is pushed: Classic measures from the middle of the ring; the twin schemes from
+  // where the thumb landed (so a tap is always a clean tap).
+  function stickOffset(t, ring) {
+    if (twin()) return [t.sx - t.ox, t.sy - t.oy];
+    const j = ring.getBoundingClientRect();
+    return [t.sx - (j.left + j.width / 2), t.sy - (j.top + j.height / 2)];
+  }
+  function showKnob(k, ring, dx, dy) {
+    const R = ring.getBoundingClientRect().width / 2, d = Math.hypot(dx, dy) || 1, m = Math.min(1, R * 0.62 / d);   // the knob stays inside the ring
+    k.style.transform = `translate(${(dx * m).toFixed(1)}px, ${(dy * m).toFixed(1)}px)`;
+  }
   function joyDirs(t, want) {
     const j = joy.getBoundingClientRect(), R = j.width / 2;
-    const dx = t.sx - (j.left + R), dy = t.sy - (j.top + R), d = Math.hypot(dx, dy) || 1;
+    const [dx, dy] = stickOffset(t, joy), d = Math.hypot(dx, dy) || 1;
+    if (d > R * 0.28) t.moved = true;                          // (Twin Tap: a push, not a tap)
     const k = Math.min(1, R * 0.62 / d);                       // the knob stays inside the ring
     knob.style.transform = `translate(${(dx * k).toFixed(1)}px, ${(dy * k).toFixed(1)}px)`;
     if (dx < -R * 0.28) want.add('ArrowLeft');
@@ -202,7 +244,7 @@
   // where the color chips start: in touch mode, just right of the ▶ button so it never covers one
   function chipStartX() {
     if (!touchMode || !pad.classList.contains('show')) return 12;
-    const b = (useJoystick ? joy : padBtn('ArrowRight')).getBoundingClientRect(), r = canvas.getBoundingClientRect();
+    const b = (stickMode() ? joy : padBtn('ArrowRight')).getBoundingClientRect(), r = canvas.getBoundingClientRect();
     return Math.max(12, Math.ceil((b.right + 28 - r.left) / r.width * W));   // past the ▶ touch zone
   }
   function chipAt(p) {
@@ -218,14 +260,22 @@
   function syncTouchKeys() {
     const want = new Set();
     for (const t of touches.values()) {
-      if (t.role === 'move') { if (useJoystick) joyDirs(t, want); else want.add(dirAt(t)); }   // stick, or slide between the buttons
+      if (t.role === 'move' && !t.firing) { if (stickMode()) joyDirs(t, want); else want.add(dirAt(t)); }   // stick, or slide between the buttons
       if (t.role === 'jump') want.add('Space');
+      if (t.role === 'raim') {                                 // right stick: set the aim
+        const [dx, dy] = stickOffset(t, joyR), R = joyR.getBoundingClientRect().width / 2;
+        showKnob(knobR, joyR, dx, dy);
+        if (Math.hypot(dx, dy) > R * 0.25) { t.moved = true; aimAngle = Math.atan2(dy, dx); }
+      }
     }
+    if (performance.now() < jumpTapUntil) want.add('Space');   // Twin Tap: a tap on the right stick jumps
     for (const k of want) if (!touchKeys.has(k)) { touchKeys.add(k); if (!keys.has(k)) pressed.add(k); keys.add(k); }
     for (const k of [...touchKeys]) if (!want.has(k)) { touchKeys.delete(k); keys.delete(k); }
     for (const el of pad.children) el.classList.toggle('on', touchKeys.has(el.dataset.k));
-    if (useJoystick && ![...touches.values()].some((t) => t.role === 'move')) knob.style.transform = '';   // let go: back to the middle
+    if (stickMode() && ![...touches.values()].some((t) => t.role === 'move')) knob.style.transform = '';   // let go: back to the middle
+    if (![...touches.values()].some((t) => t.role === 'raim')) knobR.style.transform = '';
     joy.classList.toggle('on', [...touches.values()].some((t) => t.role === 'move'));
+    joyR.classList.toggle('on', [...touches.values()].some((t) => t.role === 'raim'));
   }
   const tapMouse = (prop) => { mouse[prop] = true; setTimeout(() => { mouse[prop] = false; }, 60); };
   // touching the level works like holding the mouse button: paint (or wash, with 🧽) keeps flying
@@ -233,6 +283,26 @@
   function holdFire(on) {
     mouse.down = on && !touchWash;
     mouse.right = on && touchWash;
+  }
+  // Twin schemes: throwing from the sticks, along the right stick's aim (or forward, if never aimed).
+  // Twin Tap: tap the left stick for one throw, hold it still to keep throwing. Twin Stick: push the
+  // right stick to aim and throw.
+  let tapFire = 0;
+  function stickFire(w) {
+    if (!twin()) return;
+    for (const t of touches.values()) {
+      if (scheme === 'twintap' && t.role === 'move' && !t.moved && !t.firing && game.tick - t.tick >= 15) t.firing = true;
+    }
+    const firing = tapFire > 0 || [...touches.values()].some((t) => (scheme === 'twintap' && t.role === 'move' && t.firing) || (scheme === 'twinstick' && t.role === 'raim' && t.moved));
+    const aiming = firing || [...touches.values()].some((t) => t.role === 'raim' && t.moved);
+    if (aiming) {
+      const p = w.player, a = aimAngle !== null ? aimAngle : (p.face > 0 ? -0.35 : Math.PI + 0.35);
+      mouse.x = p.x + p.w / 2 + Math.cos(a) * 300; mouse.y = p.y + p.h * 0.25 + Math.sin(a) * 300;
+    }
+    if (firing) holdFire(true);
+    else if (stickFiring && ![...touches.values()].some((t) => t.role === 'aim')) holdFire(false);
+    stickFiring = firing;
+    if (tapFire > 0) tapFire--;
   }
 
   // ---- the color palette (touch only): tap it and the level's colors fan out; tap one, or press the
@@ -327,13 +397,15 @@
         }
         if (within(t, padBtn('Escape'), 6)) pressed.add('Escape');         // ☰ menu
         else if (within(t, padBtn('KeyR'), 6)) pressed.add('KeyR');        // ↺ restart
+        else if (scheme === 'twinstick' && within(t, padBtn('Space'), 10)) role = 'jump';
         else if (inMoveZone(t)) role = 'move';
-        else if (inJumpZone(t)) role = 'jump';
+        else if (inAimZone(t)) role = 'raim';
+        else if (scheme === 'classic' && inJumpZone(t)) role = 'jump';
         else if (onCanvas(t)) {
           if (chipAt(p) !== null) { game.color = chipAt(p); touchWash = false; sfx.select(); }
           else if (p.y >= 30 && p.y <= H - 40) role = 'aim';                              // not on the HUD bars
         }
-        touches.set(t.identifier, { role, ...sp, ...p, tick: game.tick });
+        touches.set(t.identifier, { role, ...sp, ...p, tick: game.tick, ox: t.clientX, oy: t.clientY, moved: false, firing: false });
         if (role === 'aim') { mouse.x = p.x; mouse.y = p.y; holdFire(true); }   // fire now, and keep firing while held
       }
       syncTouchKeys();
@@ -360,6 +432,14 @@
           // a very quick tap still throws once: keep the button down until the game has seen it
           if (game.tick - o.tick < 2) setTimeout(() => { if (!touchAim()) holdFire(false); }, 40);
           else if (!touchAim()) holdFire(false);
+        }
+        const quick = game.tick - o.tick < 15;           // a tap, not a hold (about a quarter second)
+        if (scheme === 'twintap' && o.role === 'move' && !o.moved && !o.firing && quick && game.mode === 'play') {
+          tapFire = 3;                                   // tap on the left stick: throw once
+        }
+        if (scheme === 'twintap' && o.role === 'raim' && !o.moved && quick && game.mode === 'play') {
+          jumpTapUntil = performance.now() + 300;        // tap on the right stick: a full jump
+          setTimeout(syncTouchKeys, 320);
         }
         if (o.role === 'palette') {                     // slid onto a color: pick it; let go on the button: stay open for a tap
           const last = { clientX: o.sx, clientY: o.sy };  // where the finger last was
@@ -699,6 +779,7 @@
       };
       prevJumpHeld = jumpHeld;
 
+      if (touchMode) stickFire(w);
       const wash = mouse.right || (mouse.down && held('ShiftLeft', 'ShiftRight'));
       if (mouse.down || mouse.right) w.throwPaint(mouse.x, mouse.y, wash ? NONE : game.color);
 
@@ -1103,8 +1184,9 @@
     else {
       // between the chips and the JUMP button: shrink the hint to fit, or leave it out
       const hint = TOUCH_HINTS[lv.name] || lv.hint.replace(/\bClick\b/g, 'Tap').replace(/\bclick\b/g, 'tap');
-      const j = padBtn('Space').getBoundingClientRect(), r = canvas.getBoundingClientRect();
-      const right = pad.classList.contains('show') ? Math.min(W, (j.left - r.left) / r.width * W - 8) : W - 8;
+      const r = canvas.getBoundingClientRect();
+      const lefts = [padBtn('Space'), joyR].map((el) => el.getBoundingClientRect()).filter((b) => b.width > 0).map((b) => b.left);
+      const right = pad.classList.contains('show') && lefts.length ? Math.min(W, (Math.min(...lefts) - r.left) / r.width * W - 8) : W - 8;
       for (const size of [14, 12, 11]) {
         ctx.font = `500 ${size}px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif`;
         if (ctx.measureText(hint).width <= right - x - 4) { text(hint, (x + right) / 2, H - 20, size, '#fff', 'center', 500); break; }
@@ -1374,6 +1456,9 @@
       localProgress,
       applyProgress,
       resetProgress,
+      touchControls: () => touchMode,
+      controls: () => scheme,
+      setControls: (s) => setScheme(s),
     });
   }
 

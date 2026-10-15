@@ -39,6 +39,7 @@ const UI = (() => {
     const left = `<button class="btn" data-act="boards">🏆 Leaderboards <small>(L)</small></button>` +
       `<button class="btn" data-act="chars">🎭 Characters <small>(C)</small></button>` +
       `<button class="btn" data-act="store">🛍️ Store <small>(S)</small></button>` +
+      `<button class="btn" data-act="controls">🎮 Controls</button>` +
       `<button class="btn" data-act="full" title="Full screen (F)">⛶ Full screen <small>(F)</small></button>` +
       (Cloud.isAdmin ? `<a class="btn small" href="${Cloud.HOME_URL}stats.html" target="_blank" rel="noopener">📊 Stats</a>` : '');
     // tips go through itch.io's own payment window, opened in a new tab
@@ -64,6 +65,7 @@ const UI = (() => {
     if (act === 'full') api.toggleFullscreen();
     if (act === 'chars') openCharacters();
     if (act === 'store') openStore();
+    if (act === 'controls') openControls();
   });
   // the little account menu under your picture: closes on any press outside it
   function setAccountMenu(open) {
@@ -151,6 +153,46 @@ const UI = (() => {
     if (modal) modal.remove();
     modal = null;
     cancelAnimationFrame(charAnim);
+  }
+
+  // ---------- touch controls: pick one of three schemes ----------
+  const CONTROL_SCHEMES = [
+    { id: 'classic', name: 'Classic', pic: '<i class="stick l"></i><i class="btn-j" style="right:6px">JUMP</i><span class="tap">👆</span>',
+      text: 'Joystick to move, JUMP button to jump. Touch the level to throw paint there; hold to keep throwing.' },
+    { id: 'twintap', name: 'Twin Tap', pic: '<i class="stick l" style="font-size:15px">🎨</i><i class="stick r" style="font-size:15px">⤴</i><span class="tap">👆</span>',
+      text: 'Left stick moves; tap it to throw, hold it still to keep throwing. Right stick aims; tap it to jump. Touching the level still throws.' },
+    { id: 'twinstick', name: 'Twin Stick', pic: '<i class="stick l"></i><i class="stick r">🎯</i><i class="btn-j" style="right:42px">J</i><span class="tap">👆</span>',
+      text: 'Left stick moves. Right stick aims and throws while you push it. JUMP button beside it. Touching the level still throws.' },
+  ];
+  function openControls() {
+    if (modal) close();
+    modal = document.createElement('div');
+    modal.className = 'modal-back';
+    modal.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ctl-title" style="max-width:620px">
+        <div class="modal-head">
+          <h2 id="ctl-title">🎮 Controls</h2>
+          <button class="close" data-act="close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body"><div class="ctl-list" role="radiogroup" aria-label="Touch controls"></div>
+          <p class="note">Your choice is saved on this device. Try each one on a level or two.</p></div>
+      </div>`;
+    document.body.appendChild(modal);
+    const render = () => {
+      const cur = api.controls();
+      modal.querySelector('.ctl-list').innerHTML = CONTROL_SCHEMES.map((c) => `
+        <button class="ctl" role="radio" aria-checked="${c.id === cur}" data-scheme="${c.id}">
+          <span class="ctl-pic" aria-hidden="true">${c.pic}</span>
+          <span><h3>${c.name} ${c.id === cur ? '<span class="chk">✓ in use</span>' : ''}</h3><p>${c.text}</p></span>
+        </button>`).join('');
+    };
+    render();
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal || e.target.closest('[data-act="close"]')) return close();
+      const b = e.target.closest('[data-scheme]');
+      if (b) { api.setControls(b.dataset.scheme); render(); api.toast(`Controls: ${CONTROL_SCHEMES.find((c) => c.id === b.dataset.scheme).name}`); }
+    });
+    modal.querySelector('.close').focus();
   }
 
   // ---------- sign in to play ----------
@@ -519,6 +561,7 @@ const UI = (() => {
     openCharacters,
     openStore,
     openSignInGate,
+    openControls,
     get modalOpen() { return !!modal; },
     // true right after a press that only closed the account menu: the game ignores that press
     get swallowPress() { return performance.now() - closedAt < 400; },
