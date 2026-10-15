@@ -299,3 +299,5 @@ body.touch .modal-back { touch-action: pan-y; }
 .tbtn.small { width: calc(var(--tb) * 0.78); height: calc(var(--tb) * 0.78); font-size: calc(var(--tb) * 0.3); bottom: calc(14px + var(--tb) + 10px); }
 .tbtn[data-k="ArrowUp"] { left: calc(8px + var(--tb) * 0.11); }
 .tbtn[data-k="ArrowDown"] { left: calc(var(--tb) * 1.11 + 18px); }
+/* phones and tablets: the game goes full screen by itself when a level starts (where the browser allows) */
+body.touch .btn[data-act="full"] { display: none; }
