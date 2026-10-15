@@ -11,6 +11,15 @@ const FIREBASE_CONFIG = {
   appId: '1:608858601012:web:e1defa6910c915630d3c61',
 };
 
+// What the player is on: 'phone', 'tablet' or 'computer'. A touchscreen as the main pointer means a
+// phone or tablet (the shorter screen side tells them apart); touch laptops count as computers.
+const DEVICE = (() => {
+  try {
+    if (!matchMedia('(pointer: coarse)').matches) return 'computer';
+    return Math.min(screen.width, screen.height) < 600 ? 'phone' : 'tablet';
+  } catch (e) { return 'computer'; }
+})();
+
 // Where the 💛 Support button goes: itch.io's donate window for the game.
 const SUPPORT_URL = 'https://filossof.itch.io/paint-runner/donate';
 

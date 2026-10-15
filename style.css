@@ -29,6 +29,7 @@ body {
 canvas {
   display: block;
   cursor: none;
+  touch-action: none;          /* touches drive the game, never scroll or zoom the page */
 }
 
 /* ---------- overlay on top of the canvas ---------- */
@@ -224,3 +225,15 @@ canvas {
 .buy.equipped { background: #138a4b; color: #fff; border-color: #138a4b; }
 .buy.poor { background: var(--paper-2); color: var(--ink-2); cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) { .item { transition: none; } }
+
+/* ---------- small screens (phones held sideways) and touch devices ---------- */
+body.touch .btn small { display: none; }               /* keyboard shortcuts mean nothing on a touchscreen */
+@media (orientation: portrait) { body.touch #overlay { display: none; } }   /* the game asks you to turn the phone */
+@media (max-width: 900px), (max-height: 500px) {
+  .corner { gap: 6px; top: 6px; right: 6px; }
+  .corner.left { left: 6px; }
+  .corner.bottom { bottom: 6px; }
+  .chip, .btn { font-size: 12px; padding: 4px 9px; gap: 5px; box-shadow: 2px 2px 0 var(--ink); }
+  .btn small { display: none; }
+  .chip img, .avatar { width: 20px; height: 20px; }
+}

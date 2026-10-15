@@ -112,6 +112,98 @@
   const held = (...codes) => codes.some((c) => keys.has(c));
   const tapped = (...codes) => codes.some((c) => pressed.has(c));
 
+  // ---------- touch controls (phones and tablets; add #touch to the address to try them on a computer) ----------
+  // ◀ ▶ bottom-left, jump bottom-right; touch anywhere else to aim (the trajectory follows your finger)
+  // and lift to throw. Tap a color chip to switch colors, the 🧽 chip to wash. Menu and Restart are in the top bar.
+  const touchMode = DEVICE !== 'computer' || /[#?&]touch/.test(location.href);
+  document.body.classList.toggle('touch', touchMode);
+  const TOUCH = {
+    left: { x: 70, y: 436, r: 40 }, right: { x: 168, y: 436, r: 40 }, jump: { x: 886, y: 430, r: 48 },
+    menu: { x: 640, y: 4, w: 74, h: 22 }, restart: { x: 722, y: 4, w: 84, h: 22 },
+  };
+  const touches = new Map();          // touch id -> { role, x, y }
+  const touchKeys = new Set();        // keys currently held down by touch buttons
+  let touchWash = false;              // the 🧽 chip: throws wash paint off instead of painting
+  const touchAim = () => [...touches.values()].some((t) => t.role === 'aim');
+  const toGamePt = (t) => { const r = canvas.getBoundingClientRect(); return { x: (t.clientX - r.left) / r.width * W, y: (t.clientY - r.top) / r.height * H }; };
+  const inCircle = (p, b) => Math.hypot(p.x - b.x, p.y - b.y) < b.r * 1.3;
+  const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y - 4 && p.y <= b.y + b.h + 6;
+  // the color chips in the bottom bar (and the wash chip after them), as drawn by drawHud
+  function chipAt(p) {
+    if (!game.world || p.y < H - 40) return null;
+    let x = 12;
+    for (const c of ALL_COLORS) {
+      if (!game.world.level.colors.includes(c)) continue;
+      if (p.x >= x - 4 && p.x <= x + 74) return c;
+      x += 82;
+    }
+    return p.x >= x - 4 && p.x <= x + 74 ? 'wash' : null;
+  }
+  function syncTouchKeys() {
+    const want = new Set();
+    for (const t of touches.values()) {
+      if (t.role === 'move') want.add(t.x < (TOUCH.left.x + TOUCH.right.x) / 2 ? 'ArrowLeft' : 'ArrowRight');   // slide between them
+      if (t.role === 'jump') want.add('Space');
+    }
+    for (const k of want) if (!touchKeys.has(k)) { touchKeys.add(k); if (!keys.has(k)) pressed.add(k); keys.add(k); }
+    for (const k of [...touchKeys]) if (!want.has(k)) { touchKeys.delete(k); keys.delete(k); }
+  }
+  const tapMouse = (prop) => { mouse[prop] = true; setTimeout(() => { mouse[prop] = false; }, 60); };
+  if (touchMode) {
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault(); Sound.init(); grabFocus();
+      for (const t of e.changedTouches) {
+        const p = toGamePt(t);
+        if (game.mode === 'title' && p.y > 362 && p.y < 434 && (p.x < 420 || p.x > 540)) { pressed.add(p.x < 420 ? 'ArrowLeft' : 'ArrowRight'); continue; }   // ◀ ▶ around the level name
+        if (game.mode !== 'play') { mouse.x = p.x; mouse.y = p.y; tapMouse('down'); continue; }   // menus: a tap is a click
+        let role = 'aim';
+        if (inCircle(p, TOUCH.left) || inCircle(p, TOUCH.right)) role = 'move';
+        else if (inCircle(p, TOUCH.jump)) role = 'jump';
+        else if (inRect(p, TOUCH.menu)) { pressed.add('Escape'); role = 'none'; }
+        else if (inRect(p, TOUCH.restart)) { pressed.add('KeyR'); role = 'none'; }
+        else if (chipAt(p) !== null) {
+          const c = chipAt(p);
+          if (c === 'wash') touchWash = !touchWash; else { game.color = c; touchWash = false; }
+          sfx.select(); role = 'none';
+        } else if (p.y < 30 || p.y > H - 40) role = 'none';   // the rest of the HUD bars
+        touches.set(t.identifier, { role, ...p });
+        if (role === 'aim') { mouse.x = p.x; mouse.y = p.y; }
+      }
+      syncTouchKeys();
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        const o = touches.get(t.identifier); if (!o) continue;
+        Object.assign(o, toGamePt(t));
+        if (o.role === 'aim') { mouse.x = o.x; mouse.y = o.y; }
+      }
+      syncTouchKeys();
+    }, { passive: false });
+    const end = (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        const o = touches.get(t.identifier); if (!o) continue;
+        touches.delete(t.identifier);
+        if (o.role === 'aim' && e.type === 'touchend' && game.mode === 'play') { mouse.x = o.x; mouse.y = o.y; tapMouse(touchWash ? 'right' : 'down'); }
+      }
+      syncTouchKeys();
+    };
+    canvas.addEventListener('touchend', end, { passive: false });
+    canvas.addEventListener('touchcancel', end, { passive: false });
+  }
+  function drawTouchControls() {
+    const btn = (b, on, draw) => {
+      ctx.globalAlpha = on ? 0.6 : 0.32; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = on ? 0.95 : 0.7; ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = INK; draw(b); ctx.globalAlpha = 1;
+    };
+    const tri = (b, d) => { ctx.beginPath(); ctx.moveTo(b.x + d * 14, b.y); ctx.lineTo(b.x - d * 9, b.y - 15); ctx.lineTo(b.x - d * 9, b.y + 15); ctx.closePath(); ctx.fill(); };
+    btn(TOUCH.left, keys.has('ArrowLeft'), (b) => tri(b, -1));
+    btn(TOUCH.right, keys.has('ArrowRight'), (b) => tri(b, 1));
+    btn(TOUCH.jump, keys.has('Space'), (b) => { ctx.beginPath(); ctx.moveTo(b.x, b.y - 17); ctx.lineTo(b.x + 17, b.y + 7); ctx.lineTo(b.x - 17, b.y + 7); ctx.closePath(); ctx.fill(); text('JUMP', b.x, b.y + 22, 11, INK, 'center', 900); });
+  }
+
   // ---------- game state ----------
   const game = {
     mode: 'title',        // title | play | complete | end
@@ -809,7 +901,12 @@
     text(`${game.levelIdx + 1} / ${LEVELS.length}   ${lv.name}`, 12, 15, 15, '#fff');
     w.cans.forEach((can, i) => drawCan(W / 2 - 22 + i * 22, 16, 0.75, can.got, can.got ? COLOR_HEX[ALL_COLORS[i]] : '#55555c'));
     text(`${(w.state === 'won' && w.finishTime !== null ? w.finishTime : w.frame / 60).toFixed(3)}s`, W - 12, 15, 15, '#fff', 'right');
-    text(`R restart · Esc menu · M music ${Sound.musicOn ? 'on' : 'off'} · F full screen`, W - 80, 15, 12, 'rgba(255,255,255,0.55)', 'right', 500);
+    if (touchMode) {
+      for (const [b, label] of [[TOUCH.menu, '☰ Menu'], [TOUCH.restart, '↺ Restart']]) {
+        ctx.fillStyle = 'rgba(255,255,255,0.18)'; roundRect(b.x, b.y, b.w, b.h, 7); ctx.fill();
+        text(label, b.x + b.w / 2, b.y + b.h / 2 + 1, 12, '#fff', 'center', 800);
+      }
+    } else text(`R restart · Esc menu · M music ${Sound.musicOn ? 'on' : 'off'} · F full screen`, W - 80, 15, 12, 'rgba(255,255,255,0.55)', 'right', 500);
 
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, H - 40, W, 40);
@@ -817,14 +914,21 @@
     ALL_COLORS.forEach((c, i) => {
       if (!lv.colors.includes(c)) return;
       const y = H - 32;
-      if (game.color === c) { ctx.fillStyle = '#fff'; roundRect(x - 3, y - 3, 76, 30, 8); ctx.fill(); }
+      if (game.color === c && !(touchMode && touchWash)) { ctx.fillStyle = '#fff'; roundRect(x - 3, y - 3, 76, 30, 8); ctx.fill(); }
       ctx.fillStyle = COLOR_HEX[c];
       roundRect(x, y, 70, 24, 6); ctx.fill();
       const label = c === PURPLE ? `${i + 1} Portal ${'●'.repeat(w.portals.length)}${'○'.repeat(2 - w.portals.length)}` : `${i + 1} ${COLOR_NAME[c]}`;
       text(label, x + 35, y + 12, c === PURPLE ? 11 : 12, c === YELLOW ? INK : '#fff', 'center');
       x += 82;
     });
-    text(lv.hint, (x + W) / 2, H - 20, 14, '#fff', 'center', 500);
+    if (touchMode) {
+      const y = H - 32;
+      if (touchWash) { ctx.fillStyle = '#fff'; roundRect(x - 3, y - 3, 76, 30, 8); ctx.fill(); }
+      ctx.fillStyle = '#e8e4da'; roundRect(x, y, 70, 24, 6); ctx.fill();
+      text('🧽 Wash', x + 35, y + 12, 12, INK, 'center');
+      x += 82;
+    }
+    text(touchMode ? lv.hint.replace(/\bClick\b/g, 'Tap').replace(/\bclick\b/g, 'tap') : lv.hint, (x + W) / 2, H - 20, 14, '#fff', 'center', 500);
 
     if (game.toast) {
       ctx.globalAlpha = Math.min(1, game.toast.t / 20);
@@ -851,7 +955,8 @@
     SHOP.drawBurst(ctx, pops, look().pop);
     drawParticles();
     ART.vignette(ctx);
-    drawAim(w);
+    if (!touchMode || touchAim()) drawAim(w);
+    if (touchMode && game.mode === 'play') drawTouchControls();
   }
 
   function splotch(x, y, r, color, seed) {
@@ -906,14 +1011,14 @@
     const st = game.stars[lv.name] || 0;
     text(best ? `${'★'.repeat(st)}${'☆'.repeat(3 - st)}   Best: ${best.toFixed(3)}s` : 'Not cleared yet', W / 2 + 40, 412, 13, best ? '#ffd166' : 'rgba(255,255,255,0.65)', 'center', 600);
 
-    if (Math.floor(game.tick / 30) % 2 === 0) text(`${Cloud.user ? 'Press ENTER or click to play' : 'Click to sign in and play'}  ·  L leaderboards  ·  C characters  ·  S store`, W / 2, 462, 16, INK, 'center', 700);
+    if (Math.floor(game.tick / 30) % 2 === 0) text(touchMode ? (Cloud.user ? 'Tap to play' : 'Tap to sign in and play') : `${Cloud.user ? 'Press ENTER or click to play' : 'Click to sign in and play'}  ·  L leaderboards  ·  C characters  ·  S store`, W / 2, 462, 16, INK, 'center', 700);
 
     text(`★ ${totalStars()} / ${LEVELS.length * 3} stars        ${drops().toLocaleString()} Paint Drops`, W / 2, 492, 15, INK, 'center', 800);
     ctx.font = '800 15px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
     const dropsW = ctx.measureText(`${drops().toLocaleString()} Paint Drops`).width;
     const fullW = ctx.measureText(`★ ${totalStars()} / ${LEVELS.length * 3} stars        ${drops().toLocaleString()} Paint Drops`).width;
     SHOP.drawDrop(ctx, W / 2 + fullW / 2 - dropsW - 12, 493, 6);
-    text('A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen', W / 2, H - 22, 12, INK, 'center', 500);
+    text(touchMode ? '◀ ▶ move · JUMP to jump · touch to aim, lift to throw · tap a color chip to switch' : 'A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen', W / 2, H - 22, 12, INK, 'center', 500);
     if (game.toast) text(game.toast.str, W / 2, 30, 14, INK, 'center', 600);
   }
 
@@ -1042,7 +1147,12 @@
       text('Click the game to use the keyboard', W / 2, H / 2, 18, '#fff', 'center', 800);
       ctx.globalAlpha = 1;
     }
-    drawCursor();
+    if (touchMode && innerHeight > innerWidth) {          // phone held upright: the levels are wide
+      ctx.fillStyle = 'rgba(15,15,18,0.92)'; ctx.fillRect(0, 0, W, H);
+      text('↻', W / 2, H / 2 - 50, 90, '#fff', 'center', 900);
+      text('Turn your phone sideways to play', W / 2, H / 2 + 40, 30, '#fff', 'center', 800);
+    }
+    if (!touchMode || touchAim()) drawCursor();
   }
 
   // Handy for poking at the game from the browser console.

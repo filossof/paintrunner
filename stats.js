@@ -13,6 +13,7 @@
   // ---------------- small helpers ----------------
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const avatar = (url) => (url ? `<img class="avatar" src="${esc(url)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : '<span class="avatar"></span>');
+  const DEVICE_ICON = { computer: '💻', tablet: '📲', phone: '📱' };
   const fmtTime = (t) => (t === undefined || t === null || Number.isNaN(t) ? '—' : `${t.toFixed(3)}s`);
   const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
   const num = (n) => (n === null || n === undefined || Number.isNaN(n) ? '—' : Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1));
@@ -212,7 +213,11 @@
         sum(p.runs.filter((r) => r.at >= since), runSecs));
       const lastActive = Math.max(p.lastSeen || 0, ...p.sessions.map((s) => s.lastBeat), ...p.runs.map((r) => r.at));
       const best = p.runs.filter((r) => r.completed);
+      // the device they used most recently (sessions and runs record it)
+      const seen = [...p.sessions.map((s) => [s.lastBeat, s.device]), ...p.runs.map((r) => [r.at, r.device])].filter(([, d]) => d).sort((a, b) => b[0] - a[0]);
       return {
+        device: seen.length ? seen[0][1] : null,
+        devicesInRange: new Set([...p.sessions.filter((s) => inRange(s.lastBeat)).map((s) => s.device), ...p.runs.filter((r) => inRange(r.at)).map((r) => r.device)].filter(Boolean)),
         ...p,
         name: p.fullName || p.name || '—',
         total: secs(0), today: secs(today), week: secs(week), inRange: secs(from),
@@ -242,6 +247,7 @@
         ${kpi(pct(clears.length, runsR.length), 'Completion rate', 'cleared ÷ attempts')}
         ${kpi(num(sum(runsR, (r) => r.deaths)), 'Deaths')}
         ${kpi(num(sum(clears, (r) => r.stars)), 'Cans collected', 'in cleared runs')}
+        ${kpi(['computer', 'tablet', 'phone'].map((d) => `${DEVICE_ICON[d]} ${num(active.filter((p) => p.devicesInRange.has(d)).length)}`).join('&nbsp; '), 'Devices', 'active players on computer · tablet · phone')}
         ${kpi(`<span class="stars">★</span> ${num(sum(people, (p) => p.totalStars))}`, 'Stars owned', 'all players, all time')}
       </div>
       ${sessionsError ? `<p class="note">Play time is not available yet: ${sessionsError === 'permission-denied' ? 'publish the updated firestore.rules in the Firebase console.' : esc(sessionsError)}</p>`
@@ -276,6 +282,7 @@
       { key: 'levelsCleared', label: 'Levels', num: true, fmt: (p) => num(p.levelsCleared || 0) },
       { key: 'totalStars', label: 'Stars', num: true, fmt: (p) => `<span class="stars">★</span> ${num(p.totalStars || 0)}` },
       { key: 'deaths', label: 'Deaths', num: true, fmt: (p) => num(p.deaths) },
+      { key: 'device', label: 'Device', fmt: (p) => (p.device ? `${DEVICE_ICON[p.device]} ${p.device}` : '<span class="muted">—</span>'), sortVal: (p) => p.device || '' },
       { key: 'lastActive', label: 'Last active', num: true, fmt: (p) => ago(p.lastActive) },
       { key: 'joinedAt', label: 'Joined', num: true, fmt: (p) => (p.joinedAt ? new Date(p.joinedAt).toLocaleDateString() : '—') },
     ];

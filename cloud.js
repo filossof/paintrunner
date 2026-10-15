@@ -178,6 +178,7 @@ const Cloud = (() => {
         level: run.level, levelIdx: run.levelIdx, completed: !!run.completed,
         time: round3(run.time), stars: run.stars || 0, throws: run.throws || 0, deaths: run.deaths || 0,
         played: round3(run.played || run.time || 0),
+        device: DEVICE,
         at: Date.now(),
       }));
     },
@@ -200,7 +201,7 @@ const Cloud = (() => {
       return db.collection('pr_sessions').doc(session.id).set({
         uid: user.uid, name: publicName(user),
         startedAt: session.startedAt, lastBeat: Date.now(),
-        seconds, levels: d.levels, lastLevel: d.lastLevel || '',
+        seconds, levels: d.levels, lastLevel: d.lastLevel || '', device: DEVICE,
       }).catch((e) => console.warn('session', e.code || e));
     },
 
