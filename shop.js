@@ -25,6 +25,8 @@ const SHOP = (() => {
     { id: 'propeller', cat: 'hat', name: 'Propeller cap', price: { drops: 550 }, rarity: 'rare' },
     { id: 'viking', cat: 'hat', name: 'Viking helmet', price: { drops: 700 }, rarity: 'epic' },
     { id: 'halo', cat: 'hat', name: 'Halo', price: { drops: 900 }, rarity: 'legend' },
+    // can't be bought: it's the reward for unlocking every achievement
+    { id: 'trophy', cat: 'hat', name: 'Golden Trophy', price: { drops: 0 }, rarity: 'legend', exclusive: true },
     { id: 'sparkle', cat: 'trail', name: 'Sparkles', price: { drops: 400 }, rarity: 'rare' },
     { id: 'notes', cat: 'trail', name: 'Music notes', price: { drops: 600 }, rarity: 'rare' },
     { id: 'flames', cat: 'trail', name: 'Flames', price: { drops: 700 }, rarity: 'epic' },
@@ -136,6 +138,18 @@ const SHOP = (() => {
       const g = (x, y, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fill(); };
       g(-5, -1, '#ff3b4e'); g(0, -2, '#2f7bff'); g(5, -1, '#1fc160');
       if (((t * 0.7) % 1) < 0.25) { ctx.fillStyle = '#fff'; star(ctx, 7, -9, 2.4, t); ctx.fill(); }
+    } else if (id === 'trophy') {
+      // a little golden cup with handles, sparkling now and then
+      const g = ctx.createLinearGradient(-9, -22, 9, 0); g.addColorStop(0, '#fff3a0'); g.addColorStop(0.45, '#ffc93c'); g.addColorStop(1, '#c98a00');
+      ctx.fillStyle = g;
+      rr(ctx, -7, -2, 14, 3.5, 1.2); ctx.fill(); ctx.stroke();                         // base
+      ctx.beginPath(); ctx.moveTo(-2.5, -2); ctx.lineTo(-2, -8); ctx.lineTo(2, -8); ctx.lineTo(2.5, -2); ctx.closePath(); ctx.fill(); ctx.stroke();   // stem
+      ctx.beginPath(); ctx.moveTo(-9, -21); ctx.lineTo(9, -21); ctx.quadraticCurveTo(9, -8, 0, -8); ctx.quadraticCurveTo(-9, -8, -9, -21); ctx.closePath(); ctx.fill(); ctx.stroke();   // cup
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(-9.5, -16, 3.6, Math.PI * 0.5, Math.PI * 1.5); ctx.stroke();
+      ctx.beginPath(); ctx.arc(9.5, -16, 3.6, Math.PI * 1.5, Math.PI * 0.5); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(-6, -19, 2, 7);
+      if (((t * 0.8) % 1) < 0.25) { ctx.fillStyle = '#fff'; star(ctx, 7, -22, 2.4, t); ctx.fill(); }
     } else if (id === 'beanie') {
       ctx.fillStyle = '#1fc160';
       ctx.beginPath(); ctx.ellipse(0, 0, 11.5, 11, 0, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();

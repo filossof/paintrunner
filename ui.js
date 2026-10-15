@@ -44,7 +44,8 @@ const UI = (() => {
       (Cloud.isAdmin ? `<a class="btn small" href="${Cloud.HOME_URL}stats.html" target="_blank" rel="noopener">📊 Stats</a>` : '');
     // tips go through itch.io's own payment window, opened in a new tab
     const support = `<a class="btn support" href="${SUPPORT_URL}" target="_blank" rel="noopener" title="Enjoying the game? Tip what you like">💛 Support</a>`;
-    overlay.innerHTML = `<div class="corner left">${left}</div><div class="corner">${right}</div><div class="corner left bottom">${support}</div>`;
+    const ach = `<button class="btn" data-act="ach">🏅 Achievements <small>${api.achCount ? api.achCount() : 0}/${Achievements.LIST.length}</small></button>`;
+    overlay.innerHTML = `<div class="corner left">${left}</div><div class="corner">${right}</div><div class="corner left bottom">${support}${ach}</div>`;
   }
 
   overlay.addEventListener('click', async (e) => {
@@ -66,6 +67,7 @@ const UI = (() => {
     if (act === 'chars') openCharacters();
     if (act === 'store') openStore();
     if (act === 'controls') openControls();
+    if (act === 'ach') openAchievements();
   });
   // the little account menu under your picture: closes on any press outside it
   function setAccountMenu(open) {
@@ -153,6 +155,47 @@ const UI = (() => {
     if (modal) modal.remove();
     modal = null;
     cancelAnimationFrame(charAnim);
+  }
+
+  // ---------- achievements ----------
+  function openAchievements() {
+    if (modal) close();
+    const list = api.achievements();
+    const done = list.filter((a) => a.done).length;
+    const earned = list.filter((a) => a.done).reduce((n, a) => n + a.reward, 0);
+    modal = document.createElement('div');
+    modal.className = 'modal-back';
+    const tiers = Object.entries(Achievements.TIERS);
+    const card = (a) => {
+      const hidden = a.secret && !a.done;
+      const pct = a.goal && a.progress !== null ? Math.round(a.progress / a.goal * 100) : null;
+      return `<div class="ach${a.done ? ' done' : ''}" style="--tier:${a.tierColor}">
+        <span class="ach-badge">${hidden ? '❔' : a.icon}</span>
+        <span class="ach-text">
+          <b>${hidden ? 'Secret achievement' : esc(a.name)}</b>
+          <small>${hidden ? 'Keep playing to discover it…' : esc(a.desc)}</small>
+          ${!a.done && pct !== null ? `<span class="ach-bar"><i style="width:${pct}%"></i></span><small class="ach-num">${a.progress.toLocaleString()} / ${a.goal.toLocaleString()}</small>` : ''}
+        </span>
+        <span class="ach-reward">${a.done ? '✓' : `+${a.reward} 💧`}</span>
+      </div>`;
+    };
+    modal.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ach-title" style="max-width:860px">
+        <div class="modal-head">
+          <h2 id="ach-title">🏅 Achievements</h2>
+          <span class="ach-total"><b>${done}</b> / ${list.length} · ${earned.toLocaleString()} 💧 earned</span>
+          <button class="close" data-act="close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="ach-progress"><i style="width:${Math.round(done / list.length * 100)}%"></i></div>
+          <p class="note">Unlock all ${list.length} to win the <b>🏆 Golden Trophy</b> hat - it can't be bought.</p>
+          ${tiers.map(([k, t]) => `<h3 class="ach-tier" style="--tier:${t.color}">${t.name} <small>+${t.reward} 💧 each</small></h3>
+            <div class="ach-grid">${list.filter((a) => a.tier === k).map(card).join('')}</div>`).join('')}
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target === modal || e.target.closest('[data-act="close"]')) close(); });
+    modal.querySelector('.close').focus();
   }
 
   // ---------- touch controls: pick one of three schemes ----------
@@ -311,10 +354,11 @@ const UI = (() => {
     const btn = (it) => {
       if (wl.equipped[it.cat] === it.id) return `<span class="buy equipped" data-unequip="${it.id}">✓ Equipped · take off</span>`;
       if (wl.owned.includes(it.id)) return `<span class="buy owned" data-equip="${it.id}">Equip</span>`;
+      if (it.exclusive) return `<span class="buy poor">🏅 Unlock every achievement</span>`;
       if (wl.drops < it.price.drops) return `<span class="buy poor">💧 ${fmtN(it.price.drops)} · need ${fmtN(it.price.drops - wl.drops)} more</span>`;
       return `<span class="buy" data-buy="${it.id}">💧 ${fmtN(it.price.drops)} · Buy</span>`;
     };
-    modal.querySelector('.items').innerHTML = SHOP.ITEMS.filter((i) => i.cat === storeTab).sort((a, b) => a.price.drops - b.price.drops).map((i) => `
+    modal.querySelector('.items').innerHTML = SHOP.ITEMS.filter((i) => i.cat === storeTab).sort((a, b) => (a.exclusive ? 1e9 : a.price.drops) - (b.exclusive ? 1e9 : b.price.drops)).map((i) => `
       <div class="item${trying === i.id ? ' trying-on' : ''}${wl.equipped[i.cat] === i.id ? ' is-equipped' : ''}" role="button" tabindex="0" data-try="${i.id}" aria-label="Try on ${esc(i.name)}">
         <canvas data-item="${i.id}" aria-hidden="true"></canvas>
         <span class="rarity r-${i.rarity}">${SHOP.RARITY[i.rarity]}</span>
@@ -562,6 +606,8 @@ const UI = (() => {
     openStore,
     openSignInGate,
     openControls,
+    openAchievements,
+    refresh: () => render(),
     get modalOpen() { return !!modal; },
     // true right after a press that only closed the account menu: the game ignores that press
     get swallowPress() { return performance.now() - closedAt < 400; },

@@ -282,6 +282,7 @@
       { key: 'levelsCleared', label: 'Levels', num: true, fmt: (p) => num(p.levelsCleared || 0) },
       { key: 'totalStars', label: 'Stars', num: true, fmt: (p) => `<span class="stars">★</span> ${num(p.totalStars || 0)}` },
       { key: 'deaths', label: 'Deaths', num: true, fmt: (p) => num(p.deaths) },
+      { key: 'achCount', label: 'Achievements', num: true, fmt: (p) => (p.achCount ? `🏅 ${num(p.achCount)}` : '<span class="muted">—</span>') },
       { key: 'device', label: 'Device', fmt: (p) => (p.device ? `${DEVICE_ICON[p.device]} ${p.device}` : '<span class="muted">—</span>'), sortVal: (p) => p.device || '' },
       { key: 'lastActive', label: 'Last active', num: true, fmt: (p) => ago(p.lastActive) },
       { key: 'joinedAt', label: 'Joined', num: true, fmt: (p) => (p.joinedAt ? new Date(p.joinedAt).toLocaleDateString() : '—') },

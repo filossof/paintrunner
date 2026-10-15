@@ -501,6 +501,8 @@
   let prevJumpHeld = false;
 
   function startLevel(i) {
+    levelColors = new Set(); ceilingFrames = 0;
+    if (new Date().getHours() < 5) Achievements.unlock('night-owl');   // midnight to 5 am
     game.levelIdx = i;
     game.world = new World(LEVELS[i]);
     game.mode = 'play';
@@ -531,6 +533,7 @@
   }
 
   function handleEvents(world) {
+    achEvents(world);
     for (const ev of world.events) {
       switch (ev.type) {
         case 'jump': sfx.jump(); squash = 1.25; break;
@@ -609,6 +612,9 @@
     if (unlockedNow.length) setTimeout(() => sfx.grow(), 400);
     refreshUnlocked();
     store.set('unlocked', game.unlocked);
+    if (w.deaths === 0 && game.levelIdx >= 24) Achievements.unlock('flawless');   // World 4 (yellow) or later, no falls
+    if (w.throws === 1) Achievements.unlock('minimalist');
+    achCheck();
     postResult(game.lastResult, true);
     game.mode = 'complete';
   }
@@ -626,7 +632,10 @@
     // keep the star ranking up to date too (total stars, levels cleared)
     Cloud.saveProfile(localProgress(), LEVELS).catch((e) => console.warn('saveProfile', e.code || e));
     Cloud.submitScore(run)
-      .then((ranks) => { result.cloud = ranks; })
+      .then((ranks) => {
+        result.cloud = ranks;
+        if (ranks && [ranks.fastest, ranks.perfect, ranks.efficient].includes(1)) Achievements.unlock('top-board');
+      })
       .catch((e) => { console.warn('submitScore', e); result.cloud = 'error'; });
   }
 
@@ -668,10 +677,11 @@
       if (game.best[l.name] === undefined) continue;
       progress[l.name] = { t: game.best[l.name], s: game.stars[l.name] || 0, t3: game.best3[l.name], th: game.fewest[l.name] };
     }
-    return { progress, unlocked: game.unlocked, wallet: game.wallet };
+    return { progress, unlocked: game.unlocked, wallet: game.wallet, ach: Achievements.state() };
   }
 
   function applyProgress(m) {
+    if (m.ach) Achievements.apply(m.ach);
     for (const [name, p] of Object.entries(m.progress)) {
       if (p.t !== undefined) game.best[name] = p.t;
       game.stars[name] = Math.max(game.stars[name] || 0, p.s || 0);
@@ -685,11 +695,13 @@
     store.set('bestByName', game.best); store.set('starsByName', game.stars);
     store.set('best3ByName', game.best3); store.set('fewestByName', game.fewest);
     store.set('unlocked', game.unlocked);
+    if (achReady) achCheck();
   }
 
   // Signing out leaves this browser as a fresh guest. The account keeps everything,
   // and signing in again brings it back.
   function resetProgress() {
+    Achievements.reset();
     for (const k of ['bestByName', 'starsByName', 'best3ByName', 'fewestByName', 'unlocked', 'wallet', 'character']) {
       try { localStorage.removeItem('paintRunner.' + k); } catch (e) { /* ignore */ }
     }
@@ -715,9 +727,103 @@
     if (typeof UI !== 'undefined') UI.openSignInGate(() => startLevel(i));
   }
 
+  // ---------- achievements (list and saving: achievements.js) ----------
+  let levelColors = new Set(), lastBounceTick = -999, ceilingFrames = 0;
+  function achContext() {
+    const names = LEVELS.map((l) => l.name), cleared = (n) => game.best[n] !== undefined;
+    return {
+      cleared: names.filter(cleared).length,
+      stars: totalStars(),
+      perfectLevels: names.filter((n) => (game.stars[n] || 0) >= 3).length,
+      worldFirsts: [0, 8, 16, 24, 32, 40].filter((i) => LEVELS[i] && cleared(LEVELS[i].name)).length,
+      fastLevels: names.filter((n) => cleared(n) && game.best[n] < 10).length,
+      spent: game.wallet.spent || 0,
+      drops: drops(),
+      outfit: ['hat', 'trail', 'skin', 'splat', 'flag'].filter((c) => game.wallet.equipped[c]).length,
+      charsUnlocked: CHARACTERS.filter((c) => totalStars() >= c.stars).length,
+    };
+  }
+  // everything that can be worked out from progress (also catches up on things done before achievements existed)
+  function achCheck() {
+    if (LEVELS[0] && game.best[LEVELS[0].name] !== undefined) Achievements.unlock('off-we-go');
+    if (game.wallet.owned.some((id) => id !== 'trophy')) Achievements.unlock('window-shopper');
+    Achievements.check(achContext());
+  }
+  function achEvents(w) {
+    for (const ev of w.events) {
+      switch (ev.type) {
+        case 'throw':
+          if (ev.color === NONE) Achievements.add('washes');
+          else {
+            Achievements.unlock('first-splash');
+            levelColors.add(ev.color);
+            if (levelColors.size >= 5) Achievements.unlock('rainbow-hands');
+          }
+          Achievements.max('mostThrows', w.throws);
+          break;
+        case 'respawn': levelColors = new Set(); break;
+        case 'can': Achievements.unlock('can-collector'); break;
+        case 'stomp': Achievements.unlock('stomp'); break;
+        case 'bounce': Achievements.add('bounces'); lastBounceTick = game.tick; break;
+        case 'teleport': if (ev.who === 'monster') Achievements.unlock('monster-taxi'); else Achievements.add('teleports'); break;
+        case 'shrink': if (ev.who === 'monster') Achievements.unlock('shrink-inky'); break;
+        case 'monsterDie': if (ev.cause === 'lava' && ev.afterPortal) Achievements.unlock('lava-taxi'); break;
+        case 'die': {
+          if (ev.cause === 'lava') Achievements.add('lavaDeaths');
+          if (ev.cause === 'spikes' && game.tick - lastBounceTick < 90) Achievements.unlock('bounce-danger');
+          const f = w.level.flag;
+          if (Math.hypot(ev.x - (f.c * T + T / 2), ev.y - (f.r * T)) <= 2.5 * T) Achievements.unlock('so-close');
+          break;
+        }
+      }
+    }
+  }
+  // unlocking: Paint Drops, a trophy card on screen, saved to the account; all 30 = the Golden Trophy hat
+  let achSaveTimer = 0;
+  Achievements.onUnlock = (a, reward, all) => {
+    game.wallet.earned += reward;
+    if (typeof UI !== 'undefined' && UI.refresh) setTimeout(() => UI.refresh(), 0);   // the 🏅 count on the menu
+    if (all && !game.wallet.owned.includes('trophy')) game.wallet.owned.push('trophy');
+    saveWallet();
+    showAchievement(a, reward, all);
+    clearTimeout(achSaveTimer);
+    achSaveTimer = setTimeout(() => { if (online() && Cloud.user) Cloud.saveProfile(localProgress(), LEVELS).catch(() => { }); }, 1500);
+  };
+  // trophy cards slide in at the top; several at once stack, and a big batch becomes one summary card
+  let achQueue = [], achShowing = 0;
+  const achBox = document.createElement('div');
+  achBox.id = 'ach-toasts';
+  document.body.appendChild(achBox);
+  function showAchievement(a, reward, all) {
+    achQueue.push({ a, reward, all });
+    if (achQueue.length === 1) setTimeout(flushAchievements, 30);
+  }
+  function flushAchievements() {
+    const batch = achQueue; achQueue = [];
+    if (!batch.length) return;
+    sfx.can(); setTimeout(() => sfx.select(), 120);
+    const cards = batch.length > 3
+      ? [{ icon: '🏆', title: `${batch.length} achievements unlocked!`, sub: `+${batch.reduce((n, b) => n + b.reward, 0)} Paint Drops · see them all in 🏅 Achievements` }]
+      : batch.map((b) => ({ icon: b.a.icon, title: b.a.name, sub: `${b.a.desc} · +${b.reward} 💧`, tier: b.a.tier }));
+    if (batch.some((b) => b.all)) cards.push({ icon: '🏆', title: 'Every achievement!', sub: 'You earned the Golden Trophy hat. Find it in the store.', tier: 'hard' });
+    for (const c of cards) {
+      const el = document.createElement('div');
+      el.className = 'ach-toast' + (c.tier ? ' t-' + c.tier : '');
+      el.innerHTML = `<span class="ach-icon">${c.icon}</span><span><small>Achievement unlocked</small><b></b><em></em></span>`;
+      el.querySelector('b').textContent = c.title; el.querySelector('em').textContent = c.sub;
+      achBox.appendChild(el);
+      achShowing++;
+      setTimeout(() => el.classList.add('out'), 3400);
+      setTimeout(() => { el.remove(); achShowing--; }, 3900);
+    }
+  }
+
   // ---------- fixed-step update ----------
+  let achReady = false;
   function update() {
     game.tick++;
+    // catch up on achievements earned before they existed, once the splash is gone
+    if (!achReady && !document.getElementById('splash')) { achReady = true; achCheck(); }
     if (game.shake > 0) game.shake--;
     if (game.toast && --game.toast.t <= 0) game.toast = null;
 
@@ -787,6 +893,7 @@
       if (mouse.down || mouse.right) w.throwPaint(mouse.x, mouse.y, wash ? NONE : game.color);
 
       w.step(inp);
+      if (w.state === 'play' && w.player.cling === 2) { if (++ceilingFrames >= 300) Achievements.unlock('spider-painter'); } else ceilingFrames = 0;
       if (!document.hidden) {
         playLog.seconds += 1 / 60;
         playLog.levels.add(LEVELS[game.levelIdx].name);
@@ -1243,6 +1350,19 @@
     ctx.fill();
   }
 
+  // the controls line at the bottom of the menu, fitted between the 💛 / 🏅 buttons and the right edge
+  function drawHelpLine(str) {
+    let x0 = 12;
+    const bl = document.querySelector('#overlay .corner.bottom');
+    if (bl && !document.getElementById('overlay').hidden) {
+      const b = bl.getBoundingClientRect(), r = canvas.getBoundingClientRect();
+      if (b.width) x0 = Math.max(12, (b.right - r.left) / r.width * W + 10);
+    }
+    for (const size of [12, 11, 10]) {
+      ctx.font = `500 ${size}px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif`;
+      if (ctx.measureText(str).width <= W - 12 - x0) { text(str, (x0 + W - 12) / 2, H - 22, size, INK, 'center', 500); return; }
+    }
+  }
   function drawTitle() {
     ctx.drawImage(ART.plainPaper(), 0, 0);
     const splots = [[150, 120, BLUE, 90], [820, 150, RED, 105], [480, 480, GREEN, 115], [90, 440, YELLOW, 70], [880, 450, BLUE, 65], [300, 40, YELLOW, 45]];
@@ -1283,7 +1403,7 @@
     const dropsW = ctx.measureText(`${drops().toLocaleString()} Paint Drops`).width;
     const fullW = ctx.measureText(`★ ${totalStars()} / ${LEVELS.length * 3} stars        ${drops().toLocaleString()} Paint Drops`).width;
     SHOP.drawDrop(ctx, W / 2 + fullW / 2 - dropsW - 12, 493, 6);
-    text(touchMode ? '◀ ▶ move · ▲ ▼ climb · JUMP · touch the level to throw paint (hold to keep throwing) · 🎨 palette for colors' : 'A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen', W / 2, H - 22, 12, INK, 'center', 500);
+    drawHelpLine(touchMode ? 'Choose how to play in 🎮 Controls  ·  🏅 Achievements earn Paint Drops' : 'A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen');
     if (game.toast) text(game.toast.str, W / 2, 30, 14, INK, 'center', 600);
   }
 
@@ -1317,11 +1437,13 @@
 
   function buyItem(id) {
     const it = SHOP.byId[id];
-    if (!it || game.wallet.owned.includes(id) || drops() < it.price.drops) return false;
+    if (!it || it.exclusive || game.wallet.owned.includes(id) || drops() < it.price.drops) return false;
     game.wallet.spent += it.price.drops;
     game.wallet.owned.push(id);
     equipItem(id);
     sfx.can();
+    Achievements.unlock('window-shopper');
+    achCheck();
     return true;
   }
   function equipItem(id, on = true) {
@@ -1330,6 +1452,7 @@
     if (on) game.wallet.equipped[it.cat] = id; else delete game.wallet.equipped[it.cat];
     game.wallet.equippedAt = Date.now();
     saveWallet();
+    achCheck();
     if (online() && Cloud.user) Cloud.saveProfile(localProgress(), LEVELS).catch(() => { });
     return true;
   }
@@ -1459,6 +1582,8 @@
       localProgress,
       applyProgress,
       resetProgress,
+      achievements: () => { achCheck(); return Achievements.list(); },
+      achCount: () => Achievements.count(),
       touchControls: () => touchMode,
       controls: () => scheme,
       setControls: (s) => setScheme(s),

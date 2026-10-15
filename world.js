@@ -299,7 +299,7 @@ class World {
       }
     }
     // ...and squash them if there is nowhere to go
-    if (this.rectHitsSolid(p.x + 1, p.y + 1, p.w - 2, p.h - 2)) this.die();
+    if (this.rectHitsSolid(p.x + 1, p.y + 1, p.w - 2, p.h - 2)) this.die('squashed');
   }
 
   // ---- paint throwing ----
@@ -441,7 +441,8 @@ class World {
     if (face === 'bottom') { p.vy = speedInto; }
     if (face === 'left') { p.vx = -Math.max(speedInto, 2); p.vy = Math.min(p.vy, 0); }
     if (face === 'right') { p.vx = Math.max(speedInto, 2); p.vy = Math.min(p.vy, 0); }
-    this.events.push({ type: 'teleport', fx, fy, x: p.x + p.w / 2, y: p.y + p.h / 2 });
+    this.events.push({ type: 'teleport', fx, fy, x: p.x + p.w / 2, y: p.y + p.h / 2, who: p === this.player ? 'player' : 'monster' });
+    if (p !== this.player) p.tpTick = this.tick;     // (a monster that lands in lava right after this: "Lava Taxi")
     return true;
   }
 
@@ -453,7 +454,7 @@ class World {
     const nx = m.x + m.w / 2 - w / 2, ny = m.y + m.h - h;
     if (this.rectHitsSolid(nx, ny, w, h)) return false;
     m.x = nx; m.y = ny; m.w = w; m.h = h; m.size = size; m.sizeCd = 20;
-    this.events.push({ type: size === 'small' ? 'shrink' : 'grow', x: m.x + m.w / 2, y: m.y + m.h / 2 });
+    this.events.push({ type: size === 'small' ? 'shrink' : 'grow', x: m.x + m.w / 2, y: m.y + m.h / 2, who: 'monster' });
     return true;
   }
 
@@ -547,7 +548,7 @@ class World {
       if (m.y > H) m.alive = false;
       if (this.inLava(m)) {
         m.alive = false;
-        this.events.push({ type: 'monsterDie', x: m.x + m.w / 2, y: m.y + m.h / 2, cause: 'lava' });
+        this.events.push({ type: 'monsterDie', x: m.x + m.w / 2, y: m.y + m.h / 2, cause: 'lava', afterPortal: m.tpTick !== undefined && this.tick - m.tpTick < 180 });
         continue;
       }
       for (const s of this.level.spikes) {
@@ -753,7 +754,7 @@ class World {
         right: [x, y + 4, T - 12, T - 8],
         left: [x + 12, y + 4, T - 12, T - 8],
       }[s.dir];
-      if (overlap(p.x, p.y, p.w, p.h, ...box)) { this.die(); return; }
+      if (overlap(p.x, p.y, p.w, p.h, ...box)) { this.die('spikes'); return; }
     }
     if (p.y > H + 40 || p.y < -80) { this.die(); return; }
     if (this.inLava(p)) { this.die('lava'); return; }
@@ -769,7 +770,7 @@ class World {
       } else if (m.size === 'small' && p.size === 'big') {
         // a tiny monster (yellow) can't hurt a full-size player; it only bumps harmlessly
       } else {
-        this.die();
+        this.die('monster');
         return;
       }
     }
