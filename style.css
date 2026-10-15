@@ -238,20 +238,21 @@ body.touch .btn small { display: none; }               /* keyboard shortcuts mea
   .chip img, .avatar { width: 20px; height: 20px; }
 }
 
-/* ---------- touch buttons, beside the game (see touchSide() in main.js) ---------- */
+/* ---------- touch buttons, see-through, at the screen edges (size: touchButtonSize() in main.js) ---------- */
 #touchpad { display: none; }
 #touchpad.show { display: block; position: fixed; inset: 0; pointer-events: none; z-index: 5; }
 .tbtn {
   position: absolute; bottom: 14px;
   width: var(--tb); height: var(--tb); border-radius: 50%;
   display: grid; place-items: center; align-content: center;
-  background: rgba(255, 255, 255, 0.14); border: 3px solid rgba(255, 255, 255, 0.55);
-  color: #fff; font: 900 calc(var(--tb) * 0.36) var(--font);
+  background: rgba(255, 255, 255, 0.07); border: 2px solid rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.55); font: 900 calc(var(--tb) * 0.36) var(--font);
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
   user-select: none; -webkit-user-select: none;
   transition: transform 0.05s, background 0.05s;
 }
 .tbtn small { font-size: calc(var(--tb) * 0.16); letter-spacing: 0.05em; margin-top: -2px; }
-.tbtn.on { background: rgba(255, 255, 255, 0.42); transform: scale(0.94); }
+.tbtn.on { background: rgba(255, 255, 255, 0.25); border-color: rgba(255, 255, 255, 0.6); transform: scale(0.94); }
 .tbtn[data-k="ArrowLeft"] { left: 8px; }
 .tbtn[data-k="ArrowRight"] { left: calc(var(--tb) + 18px); }
 .tbtn.jump { right: 10px; }

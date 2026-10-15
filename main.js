@@ -29,19 +29,16 @@
   };
 
   // ---------- scaling ----------
-  // Room the touch buttons need on each side (see #touchpad in style.css: size = --tb, 8px margins).
-  function touchSide() {
+  // Touch button size (see #touchpad in style.css): follows the screen height.
+  function touchButtonSize() {
     const tb = Math.round(Math.max(56, Math.min(84, window.innerHeight * 0.2)));
     document.documentElement.style.setProperty('--tb', tb + 'px');
-    return { l: 2 * tb + 26, r: tb + 18 };
   }
   let scale = 1, dpr = 1;
   function resize() {
     dpr = window.devicePixelRatio || 1;
-    // as big as fits, same shape; with touch controls, keep the sides free for the buttons
-    const side = document.body.classList.contains('touch') ? touchSide() : { l: 0, r: 0 };
-    document.body.style.paddingLeft = side.l + 'px'; document.body.style.paddingRight = side.r + 'px';
-    scale = Math.min((window.innerWidth - side.l - side.r) / W, window.innerHeight / H);
+    touchButtonSize();
+    scale = Math.min(window.innerWidth / W, window.innerHeight / H); // as big as fits, same shape
     canvas.style.width = Math.floor(W * scale) + 'px';
     canvas.style.height = Math.floor(H * scale) + 'px';
     canvas.width = Math.floor(W * scale * dpr);
@@ -122,13 +119,12 @@
   const tapped = (...codes) => codes.some((c) => pressed.has(c));
 
   // ---------- touch controls (phones and tablets; add #touch to the address to try them on a computer) ----------
-  // ◀ ▶ at the far left and JUMP at the far right, in the space beside the game (the game shrinks a
-  // little if needed so they never cover the level). Touch the game to aim - the trajectory follows
+  // ◀ ▶ at the far left and JUMP at the far right edge of the screen, see-through so the level shows
+  // behind them. Starting a level goes full screen (where the browser allows). Touch the game to aim - the trajectory follows
   // your finger - and lift to throw. Tap a color chip to switch colors, the 🧽 chip to wash.
   // Menu and Restart are in the top bar.
   const touchMode = DEVICE !== 'computer' || /[#?&]touch/.test(location.href);
   document.body.classList.toggle('touch', touchMode);
-  if (touchMode) resize();            // make room for the buttons beside the game
   const TOUCH = { menu: { x: 640, y: 4, w: 74, h: 22 }, restart: { x: 722, y: 4, w: 84, h: 22 } };
   const pad = document.createElement('div');
   pad.id = 'touchpad';
@@ -144,9 +140,15 @@
   const hitBtn = (t, el) => { const r = el.getBoundingClientRect(), m = 12; return t.clientX >= r.left - m && t.clientX <= r.right + m && t.clientY >= r.top - m && t.clientY <= r.bottom + m; };
   const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y - 4 && p.y <= b.y + b.h + 6;
   // the color chips in the bottom bar (and the wash chip after them), as drawn by drawHud
+  // where the color chips start: in touch mode, just right of the ▶ button so it never covers one
+  function chipStartX() {
+    if (!touchMode || !pad.classList.contains('show')) return 12;
+    const b = padBtn('ArrowRight').getBoundingClientRect(), r = canvas.getBoundingClientRect();
+    return Math.max(12, Math.ceil((b.right - r.left) / r.width * W) + 10);
+  }
   function chipAt(p) {
     if (!game.world || p.y < H - 40) return null;
-    let x = 12;
+    let x = chipStartX();
     for (const c of ALL_COLORS) {
       if (!game.world.level.colors.includes(c)) continue;
       if (p.x >= x - 4 && p.x <= x + 74) return c;
@@ -179,6 +181,7 @@
           if (!onCanvas(t)) continue;
           if (game.mode === 'title' && p.y > 362 && p.y < 434 && (p.x < 420 || p.x > 540)) { pressed.add(p.x < 420 ? 'ArrowLeft' : 'ArrowRight'); continue; }   // ◀ ▶ around the level name
           mouse.x = p.x; mouse.y = p.y; tapMouse('down');                                   // menus: a tap is a click
+          if (!(document.fullscreenElement || document.webkitFullscreenElement)) toggleFullscreen();   // phones: play full screen
           continue;
         }
         let role = 'none';
@@ -934,7 +937,7 @@
 
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, H - 40, W, 40);
-    let x = 12;
+    let x = chipStartX();
     ALL_COLORS.forEach((c, i) => {
       if (!lv.colors.includes(c)) return;
       const y = H - 32;
@@ -952,7 +955,17 @@
       text('🧽 Wash', x + 35, y + 12, 12, INK, 'center');
       x += 82;
     }
-    text(touchMode ? lv.hint.replace(/\bClick\b/g, 'Tap').replace(/\bclick\b/g, 'tap') : lv.hint, (x + W) / 2, H - 20, 14, '#fff', 'center', 500);
+    if (!touchMode) text(lv.hint, (x + W) / 2, H - 20, 14, '#fff', 'center', 500);
+    else {
+      // between the chips and the JUMP button: shrink the hint to fit, or leave it out
+      const hint = lv.hint.replace(/\bClick\b/g, 'Tap').replace(/\bclick\b/g, 'tap');
+      const j = padBtn('Space').getBoundingClientRect(), r = canvas.getBoundingClientRect();
+      const right = pad.classList.contains('show') ? Math.min(W, (j.left - r.left) / r.width * W - 8) : W - 8;
+      for (const size of [14, 12, 11]) {
+        ctx.font = `500 ${size}px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif`;
+        if (ctx.measureText(hint).width <= right - x - 4) { text(hint, (x + right) / 2, H - 20, size, '#fff', 'center', 500); break; }
+      }
+    }
 
     if (game.toast) {
       ctx.globalAlpha = Math.min(1, game.toast.t / 20);
