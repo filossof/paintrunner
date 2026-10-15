@@ -410,3 +410,30 @@ body.touch .store-stage.open .sheet-info { display: grid; gap: 10px; justify-ite
 .tbtn.mini { width: calc(var(--tb) * 0.6); height: calc(var(--tb) * 0.6); font-size: calc(var(--tb) * 0.3); bottom: calc(14px + var(--tb) * 1.78 + 22px); }
 .tbtn[data-k="Escape"] { left: calc(8px + var(--tb) * 0.2); }
 .tbtn[data-k="KeyR"] { left: calc(var(--tb) * 1.2 + 18px); }
+
+/* ---------- joystick (instead of ◀ ▶ ▲ ▼; #dpad in the address brings the buttons back) ---------- */
+.joy { display: none; }
+#touchpad.joystick .tbtn[data-k^="Arrow"] { display: none; }
+#touchpad.joystick .joy {
+  display: block; position: absolute; left: 10px; bottom: 12px;
+  width: calc(var(--tb) * 1.75); height: calc(var(--tb) * 1.75); border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.03) 0 40%, rgba(255,255,255,0.08) 41% 100%);
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 0 0 calc(var(--tb) * 0.02) rgba(255,255,255,0.08);
+}
+/* four little arrows at the edges of the ring */
+#touchpad.joystick .joy::before {
+  content: ''; position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='rgba(255,255,255,0.42)'%3E%3Cpath d='M8 50 17 44 17 56Z M92 50 83 44 83 56Z M50 8 44 17 56 17Z M50 92 44 83 56 83Z'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+}
+.joy-knob {
+  position: absolute; left: 50%; top: 50%; z-index: 1;
+  width: calc(var(--tb) * 0.78); height: calc(var(--tb) * 0.78); margin: calc(var(--tb) * -0.39) 0 0 calc(var(--tb) * -0.39);
+  border-radius: 50%; background: rgba(255, 255, 255, 0.2); border: 2px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3); transition: transform 0.08s ease-out;
+}
+.joy.on .joy-knob { background: rgba(255, 255, 255, 0.34); transition: none; }
+/* ☰ and ↺ sit just above the joystick */
+#touchpad.joystick .tbtn.mini { bottom: calc(12px + var(--tb) * 1.75 + 12px); }
+#touchpad.joystick .tbtn[data-k="Escape"] { left: 12px; }
+#touchpad.joystick .tbtn[data-k="KeyR"] { left: calc(22px + var(--tb) * 0.6); }

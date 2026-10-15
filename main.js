@@ -137,10 +137,15 @@
     '<div class="tbtn small" data-k="ArrowUp">▲</div><div class="tbtn small" data-k="ArrowDown">▼</div>' +   // climb green walls, drop from ceilings
     // Menu and Restart live down here, not in the top bar: on itch.io's mobile page its own toolbar covers the top edge
     '<div class="tbtn mini" data-k="Escape" aria-label="Menu">☰</div><div class="tbtn mini" data-k="KeyR" aria-label="Restart">↺</div>' +
+    '<div class="joy" aria-hidden="true"><i class="joy-knob"></i></div>' +
     '<div class="tbtn jump" data-k="Space">▲<small>JUMP</small></div>' +
     '<div class="palette"><div class="pal-btn" aria-label="Choose a color"></div></div>';
   if (touchMode) document.body.appendChild(pad);
   const padBtn = (k) => pad.querySelector(`[data-k="${k}"]`);
+  // Moving: a joystick (default) or four direction buttons (add #dpad to the address)
+  const useJoystick = !/[#&?]dpad/.test(location.href);
+  pad.classList.toggle('joystick', useJoystick);
+  const joy = pad.querySelector('.joy'), knob = pad.querySelector('.joy-knob');
   const touches = new Map();          // touch id -> { role, sx, sy (screen), x, y (game) }
   const touchKeys = new Set();        // keys currently held down by touch buttons
   let touchWash = false;              // the 🧽 chip: throws wash paint off instead of painting
@@ -151,8 +156,25 @@
   // from a bit above the buttons down to the bottom, moves; the same at the right edge jumps.
   const DIRS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
   function inMoveZone(t) {
+    if (useJoystick) {        // anywhere in the bottom-left corner grabs the stick
+      const j = joy.getBoundingClientRect();
+      return t.clientX <= j.right + 30 && t.clientY >= j.top - 30;
+    }
     const r = padBtn('ArrowRight').getBoundingClientRect(), u = padBtn('ArrowUp').getBoundingClientRect();
     return t.clientX <= r.right + 20 && t.clientY >= u.top - u.height * 0.5;
+  }
+  // The joystick: where the thumb is, relative to the middle of the ring, gives the directions.
+  // Up/down need a firmer push than left/right, so running never presses "down" by accident
+  // (down stops blue bounces).
+  function joyDirs(t, want) {
+    const j = joy.getBoundingClientRect(), R = j.width / 2;
+    const dx = t.sx - (j.left + R), dy = t.sy - (j.top + R), d = Math.hypot(dx, dy) || 1;
+    const k = Math.min(1, R * 0.62 / d);                       // the knob stays inside the ring
+    knob.style.transform = `translate(${(dx * k).toFixed(1)}px, ${(dy * k).toFixed(1)}px)`;
+    if (dx < -R * 0.28) want.add('ArrowLeft');
+    if (dx > R * 0.28) want.add('ArrowRight');
+    if (dy < -R * 0.5) want.add('ArrowUp');
+    if (dy > R * 0.5) want.add('ArrowDown');
   }
   // which direction button a finger in the move zone means: the nearest one
   function dirAt(t) {
@@ -180,7 +202,7 @@
   // where the color chips start: in touch mode, just right of the ▶ button so it never covers one
   function chipStartX() {
     if (!touchMode || !pad.classList.contains('show')) return 12;
-    const b = padBtn('ArrowRight').getBoundingClientRect(), r = canvas.getBoundingClientRect();
+    const b = (useJoystick ? joy : padBtn('ArrowRight')).getBoundingClientRect(), r = canvas.getBoundingClientRect();
     return Math.max(12, Math.ceil((b.right + 28 - r.left) / r.width * W));   // past the ▶ touch zone
   }
   function chipAt(p) {
@@ -196,12 +218,14 @@
   function syncTouchKeys() {
     const want = new Set();
     for (const t of touches.values()) {
-      if (t.role === 'move') want.add(dirAt(t));      // slide between the direction buttons
+      if (t.role === 'move') { if (useJoystick) joyDirs(t, want); else want.add(dirAt(t)); }   // stick, or slide between the buttons
       if (t.role === 'jump') want.add('Space');
     }
     for (const k of want) if (!touchKeys.has(k)) { touchKeys.add(k); if (!keys.has(k)) pressed.add(k); keys.add(k); }
     for (const k of [...touchKeys]) if (!want.has(k)) { touchKeys.delete(k); keys.delete(k); }
     for (const el of pad.children) el.classList.toggle('on', touchKeys.has(el.dataset.k));
+    if (useJoystick && ![...touches.values()].some((t) => t.role === 'move')) knob.style.transform = '';   // let go: back to the middle
+    joy.classList.toggle('on', [...touches.values()].some((t) => t.role === 'move'));
   }
   const tapMouse = (prop) => { mouse[prop] = true; setTimeout(() => { mouse[prop] = false; }, 60); };
   // touching the level works like holding the mouse button: paint (or wash, with 🧽) keeps flying
