@@ -65,7 +65,7 @@ const Achievements = (() => {
     { id: 'clean-freak', tier: 'funny', icon: '🧽', name: 'Clean Freak', desc: 'Wash paint off 50 times', goal: 50, count: 'washes' },
     { id: 'lava-taxi', tier: 'funny', icon: '🔥', name: 'Lava Taxi', desc: 'Send a monster through a portal straight into lava' },
     { id: 'bounce-danger', tier: 'funny', icon: '🤕', name: 'Bounce Into Danger', desc: 'Bounce on blue paint right into spikes' },
-    { id: 'dinner-time', tier: 'funny', icon: '🍝', name: 'Dinner Time', desc: 'Play between 6 and 7 pm' },
+    { id: 'dinner-time', tier: 'funny', icon: '🍝', name: '6, 7...', desc: 'Play between 6 and 7 pm' },
     { id: 'try-again', tier: 'funny', icon: '🔁', name: 'Try, Try Again', desc: 'Fall 100 times', goal: 100, count: 'deaths' },
     { id: 'pancake', tier: 'funny', icon: '🥞', name: 'Pancake', desc: 'Get squashed by a moving platform' },
     { id: 'big-spender', tier: 'funny', icon: '💸', name: 'Big Spender', desc: 'Spend 2,000 Paint Drops', goal: 2000, value: (c) => c.spent },
