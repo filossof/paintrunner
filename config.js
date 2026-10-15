@@ -11,8 +11,8 @@ const FIREBASE_CONFIG = {
   appId: '1:608858601012:web:e1defa6910c915630d3c61',
 };
 
-// Where the 💛 Support button goes: itch.io's pay-what-you-want window for the game.
-const SUPPORT_URL = 'https://filossof.itch.io/paint-runner/purchase';
+// Where the 💛 Support button goes: itch.io's donate window for the game.
+const SUPPORT_URL = 'https://filossof.itch.io/paint-runner/donate';
 
 // The account that can open the stats dashboard (also enforced in firestore.rules).
 const ADMIN_EMAIL = 'filossof@gmail.com';
