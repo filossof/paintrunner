@@ -293,3 +293,5 @@ body.touch .modal-back { touch-action: pan-y; }
 .palette.open .pal-opt { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 1; }
 .palette.open .pal-opt.current { border-color: #ffd166; box-shadow: 0 0 0 3px rgba(255,209,102,0.5), 0 3px 10px rgba(0,0,0,0.5); }
 .palette.open .pal-opt.hover { transform: translate(var(--dx), var(--dy)) scale(1.22); }
+.pal-btn { color: #fff; font-weight: 900; letter-spacing: 1px; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.palette:not(.open) .pal-btn:not(:empty) { font-size: calc(var(--tb) * 0.2); }

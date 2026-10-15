@@ -162,7 +162,7 @@
     return Math.max(12, Math.ceil((b.right + 28 - r.left) / r.width * W));   // past the ▶ touch zone
   }
   function chipAt(p) {
-    if (!game.world || p.y < H - 40) return null;
+    if (touchMode || !game.world || p.y < H - 40) return null;   // (touch uses the palette)
     let x = chipStartX();
     for (const c of ALL_COLORS) {
       if (!game.world.level.colors.includes(c)) continue;
@@ -215,14 +215,15 @@
   function updatePalette() {
     if (!game.world) return;
     const cols = game.world.level.colors;
-    const key = cols.join() + '|' + game.color + '|' + touchWash;
+    const portals = game.color === PURPLE && !touchWash ? '●'.repeat(game.world.portals.length) + '○'.repeat(2 - game.world.portals.length) : '';
+    const key = cols.join() + '|' + game.color + '|' + touchWash + '|' + portals;
     if (key === palKey) return;
     const rebuild = !palKey.startsWith(cols.join() + '|');
     palKey = key;
     const ring = cols.map((c) => COLOR_HEX[c]);
     palBtn.style.setProperty('--cur', touchWash ? '#e8e4da' : COLOR_HEX[game.color]);
     palBtn.style.setProperty('--ring', `conic-gradient(${[...ring, ring[0]].join(', ')})`);
-    palBtn.textContent = touchWash ? '🧽' : '';
+    palBtn.textContent = touchWash ? '🧽' : portals;   // purple: how many portals are placed
     if (rebuild) {
       palOptions().forEach((el) => el.remove());
       const items = [...cols.map((c) => ({ c, hex: COLOR_HEX[c], label: c === PURPLE ? 'Portal' : COLOR_NAME[c] })), { c: 'wash', hex: '#e8e4da', label: 'Wash' }];
@@ -1031,7 +1032,7 @@
     ctx.fillRect(0, H - 40, W, 40);
     let x = chipStartX();
     ALL_COLORS.forEach((c, i) => {
-      if (!lv.colors.includes(c)) return;
+      if (!lv.colors.includes(c) || touchMode) return;     // phones and tablets use the palette instead
       const y = H - 32;
       if (game.color === c && !(touchMode && touchWash)) { ctx.fillStyle = '#fff'; roundRect(x - 3, y - 3, 76, 30, 8); ctx.fill(); }
       ctx.fillStyle = COLOR_HEX[c];
