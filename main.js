@@ -133,7 +133,9 @@
   const TOUCH = { menu: { x: 640, y: 4, w: 74, h: 22 }, restart: { x: 722, y: 4, w: 84, h: 22 } };
   const pad = document.createElement('div');
   pad.id = 'touchpad';
-  pad.innerHTML = '<div class="tbtn" data-k="ArrowLeft">◀</div><div class="tbtn" data-k="ArrowRight">▶</div><div class="tbtn jump" data-k="Space">▲<small>JUMP</small></div>' +
+  pad.innerHTML = '<div class="tbtn" data-k="ArrowLeft">◀</div><div class="tbtn" data-k="ArrowRight">▶</div>' +
+    '<div class="tbtn small" data-k="ArrowUp">▲</div><div class="tbtn small" data-k="ArrowDown">▼</div>' +   // climb green walls, drop from ceilings
+    '<div class="tbtn jump" data-k="Space">▲<small>JUMP</small></div>' +
     '<div class="palette"><div class="pal-btn" aria-label="Choose a color"></div></div>';
   if (touchMode) document.body.appendChild(pad);
   const padBtn = (k) => pad.querySelector(`[data-k="${k}"]`);
@@ -145,9 +147,19 @@
   const onCanvas = (t) => { const r = canvas.getBoundingClientRect(); return t.clientX >= r.left && t.clientX <= r.right && t.clientY >= r.top && t.clientY <= r.bottom; };
   // Forgiving touch zones around the buttons: anything from the screen's left edge to a bit past ▶,
   // from a bit above the buttons down to the bottom, moves; the same at the right edge jumps.
+  const DIRS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
   function inMoveZone(t) {
-    const l = padBtn('ArrowLeft').getBoundingClientRect(), r = padBtn('ArrowRight').getBoundingClientRect();
-    return t.clientX <= r.right + 20 && t.clientY >= Math.min(l.top, r.top) - l.height * 0.6;
+    const r = padBtn('ArrowRight').getBoundingClientRect(), u = padBtn('ArrowUp').getBoundingClientRect();
+    return t.clientX <= r.right + 20 && t.clientY >= u.top - u.height * 0.5;
+  }
+  // which direction button a finger in the move zone means: the nearest one
+  function dirAt(t) {
+    let best = null, bd = Infinity;
+    for (const k of DIRS) {
+      const b = padBtn(k).getBoundingClientRect(), d = Math.hypot(t.sx - (b.left + b.width / 2), t.sy - (b.top + b.height / 2));
+      if (d < bd) { best = k; bd = d; }
+    }
+    return best;
   }
   function inJumpZone(t) {
     const j = padBtn('Space').getBoundingClientRect();
@@ -155,6 +167,14 @@
   }
   const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y - 4 && p.y <= b.y + b.h + 6;
   // the color chips in the bottom bar (and the wash chip after them), as drawn by drawHud
+  // level hints that talk about keys or the mouse, in touch words
+  const TOUCH_HINTS = {
+    'Up and Up': 'Hold ▼ to land on blue without bouncing. And stay out of the lava!',
+    'Hat Check': 'This hat shoots blue at your feet. Bouncing into spikes hurts - 🧽 Wash in the palette cleans paint off.',
+    'Two Colors': 'Switch colors with the palette button above JUMP.',
+    'Sticky Situation': 'Green is sticky. Grab the wall, climb with ▲ / ▼, JUMP to wall-jump.',
+    'Ceiling Walk': 'Paint the ceiling green, jump up, and hang on. ▼ to let go.',
+  };
   // where the color chips start: in touch mode, just right of the ▶ button so it never covers one
   function chipStartX() {
     if (!touchMode || !pad.classList.contains('show')) return 12;
@@ -173,10 +193,8 @@
   }
   function syncTouchKeys() {
     const want = new Set();
-    const l = padBtn('ArrowLeft').getBoundingClientRect(), r = padBtn('ArrowRight').getBoundingClientRect();
-    const mid = (l.left + l.right + r.left + r.right) / 4;
     for (const t of touches.values()) {
-      if (t.role === 'move') want.add(t.sx < mid ? 'ArrowLeft' : 'ArrowRight');   // slide between them
+      if (t.role === 'move') want.add(dirAt(t));      // slide between the direction buttons
       if (t.role === 'jump') want.add('Space');
     }
     for (const k of want) if (!touchKeys.has(k)) { touchKeys.add(k); if (!keys.has(k)) pressed.add(k); keys.add(k); }
@@ -257,6 +275,8 @@
         if (game.mode !== 'play') {
           if (!onCanvas(t)) continue;
           if (game.mode === 'title' && p.y > 362 && p.y < 434 && (p.x < 420 || p.x > 540)) { pressed.add(p.x < 420 ? 'ArrowLeft' : 'ArrowRight'); continue; }   // ◀ ▶ around the level name
+          const pb = game.mode === 'complete' && panelButtons.find((b) => inRect(p, b));
+          if (pb) { pressed.add(pb.key); continue; }                                         // Menu / Retry / Next on the level-complete screen
           mouse.x = p.x; mouse.y = p.y; tapMouse('down');                                   // menus: a tap is a click
           if (!(document.fullscreenElement || document.webkitFullscreenElement)) toggleFullscreen();   // phones: play full screen
           continue;
@@ -612,7 +632,7 @@
       if (tapped('KeyR')) play(game.levelIdx);
       if (tapped('Escape')) { game.mode = 'title'; game.menuIdx = game.levelIdx; } // back to the level you just finished
     } else if (game.mode === 'end') {
-      if (tapped('Enter', 'Space', 'Escape')) { game.mode = 'title'; game.menuIdx = game.unlocked; }
+      if (tapped('Enter', 'Space', 'Escape') || mouse.down) { mouse.down = false; game.mode = 'title'; game.menuIdx = game.unlocked; }
     } else if (game.mode === 'play') {
       const w = game.world;
       if (tapped('Escape')) { logAbandon(); game.mode = 'title'; game.menuIdx = game.levelIdx; pressed.clear(); return; }
@@ -1044,7 +1064,7 @@
     if (!touchMode) text(lv.hint, (x + W) / 2, H - 20, 14, '#fff', 'center', 500);
     else {
       // between the chips and the JUMP button: shrink the hint to fit, or leave it out
-      const hint = lv.hint.replace(/\bClick\b/g, 'Tap').replace(/\bclick\b/g, 'tap');
+      const hint = TOUCH_HINTS[lv.name] || lv.hint.replace(/\bClick\b/g, 'Tap').replace(/\bclick\b/g, 'tap');
       const j = padBtn('Space').getBoundingClientRect(), r = canvas.getBoundingClientRect();
       const right = pad.classList.contains('show') ? Math.min(W, (j.left - r.left) / r.width * W - 8) : W - 8;
       for (const size of [14, 12, 11]) {
@@ -1206,7 +1226,21 @@
   }
 
   // Dark overlay with centered lines of text. Returns the y of the first line.
+  // tappable buttons on the level-complete screen (touch only); `key` is what pressing one does
+  let panelButtons = [];
+  function drawPanelButtons(list, y) {
+    const w = 130, h = 38, gap = 16, x0 = W / 2 - (list.length * w + (list.length - 1) * gap) / 2;
+    panelButtons = list.map(([label, key], i) => ({ x: x0 + i * (w + gap), y: y - h / 2, w, h, key }));
+    panelButtons.forEach((b, i) => {
+      const main = i === list.length - 1;
+      ctx.fillStyle = main ? '#ffd166' : 'rgba(255,255,255,0.14)';
+      roundRect(b.x, b.y, b.w, b.h, 12); ctx.fill();
+      ctx.strokeStyle = main ? '#ffd166' : 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+      text(list[i][0], b.x + b.w / 2, b.y + b.h / 2 + 1, 17, main ? INK : '#fff', 'center', 800);
+    });
+  }
   function drawPanel(lines, step = 42) {
+    panelButtons = [];
     ctx.fillStyle = 'rgba(15,15,18,0.82)';
     ctx.fillRect(0, 0, W, H);
     const y0 = H / 2 - ((lines.length - 1) * step) / 2;
@@ -1240,10 +1274,11 @@
           [e.rows.map(([label, n]) => `${label} +${n}`).join('   ·   '), 13, 'rgba(255,255,255,0.65)', 600],
           cloudLine(r),
           r.unlockedNow && r.unlockedNow.length
-            ? [`New character unlocked: ${r.unlockedNow.map((c) => c.name).join(' & ')}!  Press C to try it`, 16, '#7cf29c', 800]
+            ? [`New character unlocked: ${r.unlockedNow.map((c) => c.name).join(' & ')}!  ${touchMode ? 'Try it from the menu' : 'Press C to try it'}`, 16, '#7cf29c', 800]
             : ['', 14, '#fff', 500],
-          ['ENTER: next level   ·   R: retry   ·   S: store   ·   Esc: menu', 15, 'rgba(255,255,255,0.6)', 500],
+          touchMode ? ['', 15, '#fff', 500] : ['ENTER: next level   ·   R: retry   ·   S: store   ·   Esc: menu', 15, 'rgba(255,255,255,0.6)', 500],
         ], 40);
+        if (touchMode) drawPanelButtons([['☰ Menu', 'Escape'], ['↺ Retry', 'KeyR'], ['Next ▶', 'Enter']], y0 + 10 * 40);
         [0, 1, 2].forEach((i) => drawCan(W / 2 - 56 + i * 56, y0 + 62, 1.6, i < r.stars, COLOR_HEX[ALL_COLORS[i]]));
         if (r.newStars) text('new record!', W / 2 + 96, y0 + 62, 16, '#ffd166', 'left', 800);
         // a drop next to the total
@@ -1258,7 +1293,7 @@
           [`Stars: ${totalStars()} / ${LEVELS.length * 3}`, 24, '#ffd166', 800],
           ['Try beating your best times from the menu.', 18, 'rgba(255,255,255,0.7)', 500],
           ['Enjoyed it? The 💛 Support button lets you tip what you like.', 16, '#ffd166', 600],
-          ['Press ENTER', 16, 'rgba(255,255,255,0.6)', 500],
+          [touchMode ? 'Tap to go to the menu' : 'Press ENTER', 16, 'rgba(255,255,255,0.6)', 500],
         ]);
       }
     }
