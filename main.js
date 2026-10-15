@@ -100,6 +100,7 @@
   }
   canvas.addEventListener('mousemove', toGame);
   canvas.addEventListener('mousedown', (e) => {
+    if (typeof UI !== 'undefined' && UI.swallowPress) return;   // that press just closed the account menu
     toGame(e); Sound.init();
     // preventDefault below would stop the click from giving us the keyboard, so take it ourselves.
     // A click that only brings the keyboard back doesn't throw paint (it would cost a throw).
@@ -279,7 +280,7 @@
       for (const t of e.changedTouches) {
         const sp = { sx: t.clientX, sy: t.clientY }, p = toGamePt(t);
         if (game.mode !== 'play') {
-          if (!onCanvas(t)) continue;
+          if (!onCanvas(t) || (typeof UI !== 'undefined' && UI.swallowPress)) continue;
           if (game.mode === 'title' && p.y > 362 && p.y < 434 && (p.x < 420 || p.x > 540)) { pressed.add(p.x < 420 ? 'ArrowLeft' : 'ArrowRight'); continue; }   // ◀ ▶ around the level name
           const pb = game.mode === 'complete' && panelButtons.find((b) => inRect(p, b));
           if (pb) { pressed.add(pb.key); continue; }                                         // Menu / Retry / Next on the level-complete screen

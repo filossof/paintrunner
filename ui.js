@@ -26,8 +26,15 @@ const UI = (() => {
     overlay.hidden = mode === 'play' || !Cloud.available;
     if (overlay.hidden) return;
     const u = Cloud.user;
+    // signed in: just your picture; tapping it opens a small menu with Sign out
     const right = u
-      ? `<span class="chip" title="${esc(u.email || '')}">${avatar(u.photoURL)}<span>${esc((u.displayName || 'Painter').split(' ')[0])}</span><button class="out" data-act="signout">Sign out</button></span>`
+      ? `<div class="account">
+          <button class="avatar-btn" data-act="account" aria-haspopup="true" aria-expanded="false" aria-label="${esc(u.displayName || 'Account')}" title="${esc(u.displayName || '')}">${u.photoURL ? avatar(u.photoURL) : `<span class="initial">${esc((u.displayName || u.email || '?')[0].toUpperCase())}</span>`}</button>
+          <div class="account-menu" hidden>
+            <div class="who"><strong>${esc(u.displayName || 'Painter')}</strong><small>${esc(u.email || '')}</small></div>
+            <button class="btn small" data-act="signout">Sign out</button>
+          </div>
+        </div>`
       : `<button class="btn" data-act="signin">${GOOGLE_G}<span>Sign in with Google</span></button>`;
     const left = `<button class="btn" data-act="boards">🏆 Leaderboards <small>(L)</small></button>` +
       `<button class="btn" data-act="chars">🎭 Characters <small>(C)</small></button>` +
@@ -45,7 +52,9 @@ const UI = (() => {
     // it again, e.g. leaving full screen. Blurring keeps the keyboard inside the game.
     if (btn && e.detail > 0) btn.blur();
     if (act === 'signin') signIn();
+    if (act === 'account') { setAccountMenu(overlay.querySelector('.account-menu').hidden); return; }
     if (act === 'signout') {
+      setAccountMenu(false);
       await Cloud.flush().catch(() => { });     // finish saving to the account first
       await Cloud.signOut();
       api.resetProgress();
@@ -56,6 +65,20 @@ const UI = (() => {
     if (act === 'chars') openCharacters();
     if (act === 'store') openStore();
   });
+  // the little account menu under your picture: closes on any press outside it
+  function setAccountMenu(open) {
+    const m = overlay.querySelector('.account-menu'), b = overlay.querySelector('.avatar-btn');
+    if (!m) return;
+    m.hidden = !open;
+    b.setAttribute('aria-expanded', String(open));
+  }
+  // a press outside closes it - and only closes it (it doesn't also start a level)
+  let closedAt = 0;
+  document.addEventListener('pointerdown', (e) => {
+    const m = overlay.querySelector('.account-menu');
+    if (m && !m.hidden && !e.target.closest('.account')) { setAccountMenu(false); closedAt = performance.now(); }
+  }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setAccountMenu(false); });
   // keep clicks on the overlay from also hitting the game underneath
   overlay.addEventListener('mousedown', (e) => e.stopPropagation());
 
@@ -483,5 +506,7 @@ const UI = (() => {
     openStore,
     openSignInGate,
     get modalOpen() { return !!modal; },
+    // true right after a press that only closed the account menu: the game ignores that press
+    get swallowPress() { return performance.now() - closedAt < 400; },
   };
 })();

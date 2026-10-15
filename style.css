@@ -301,3 +301,25 @@ body.touch .modal-back { touch-action: pan-y; }
 .tbtn[data-k="ArrowDown"] { left: calc(var(--tb) * 1.11 + 18px); }
 /* phones and tablets: the game goes full screen by itself when a level starts (where the browser allows) */
 body.touch .btn[data-act="full"] { display: none; }
+
+/* signed in: a round picture; the menu with Sign out opens under it */
+.account { position: relative; }
+.avatar-btn {
+  width: 40px; height: 40px; padding: 0; border-radius: 50%; overflow: hidden; cursor: pointer;
+  border: 2px solid var(--ink); background: #fff; box-shadow: 3px 3px 0 var(--ink);
+  display: grid; place-items: center; transition: transform 0.08s, box-shadow 0.08s;
+}
+.avatar-btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+.avatar-btn:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.avatar-btn .avatar { width: 100%; height: 100%; border-radius: 0; }
+.avatar-btn .initial { font: 800 18px var(--font); color: var(--ink); }
+.account-menu {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 3;
+  background: #fff; border: 2px solid var(--ink); border-radius: 14px; box-shadow: 4px 4px 0 var(--ink);
+  padding: 10px 12px; display: grid; gap: 10px; min-width: 190px; max-width: 260px;
+}
+.account-menu[hidden] { display: none; }
+.account-menu .who { display: grid; gap: 2px; font: 600 13px var(--font); color: var(--ink); }
+.account-menu .who small { color: var(--ink-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu .btn { justify-self: start; }
+@media (max-width: 900px), (max-height: 500px) { .avatar-btn { width: 32px; height: 32px; box-shadow: 2px 2px 0 var(--ink); } }
