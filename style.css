@@ -261,3 +261,35 @@ body.touch .btn small { display: none; }               /* keyboard shortcuts mea
 /* touch devices: no zooming, double-tap zoom or page scrolling while playing (windows can still scroll) */
 body.touch { touch-action: none; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
 body.touch .modal-back { touch-action: pan-y; }
+
+/* ---------- color palette (touch): a button above JUMP; the level's colors fan out from it ---------- */
+.palette {
+  position: absolute; right: calc(10px + var(--tb) * 0.09); bottom: calc(14px + var(--tb) * 1.72);
+  width: calc(var(--tb) * 0.82); height: calc(var(--tb) * 0.82);
+  pointer-events: none;
+}
+.pal-btn {
+  position: absolute; inset: 0; border-radius: 50%;
+  /* the current color in the middle, a ring of the level's colors around it */
+  background: radial-gradient(circle, var(--cur) 0 52%, rgba(255,255,255,0.9) 53% 58%, transparent 59%), var(--ring);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+  display: grid; place-items: center; font-size: calc(var(--tb) * 0.3);
+  transition: transform 0.15s;
+  opacity: 0.92;
+}
+.palette.open .pal-btn { transform: scale(0.88) rotate(-30deg); opacity: 1; }
+.pal-opt {
+  position: absolute; left: 50%; top: 50%;
+  width: calc(var(--tb) * 0.54); height: calc(var(--tb) * 0.54);
+  margin: calc(var(--tb) * -0.27) 0 0 calc(var(--tb) * -0.27);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.55), transparent 42%), var(--hex);
+  border: 3px solid #fff;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+  display: grid; place-items: center; font-size: calc(var(--tb) * 0.26);
+  transform: translate(0, 0) scale(0.2); opacity: 0;
+  transition: transform 0.18s cubic-bezier(.3,1.6,.5,1), opacity 0.12s;
+}
+.palette.open .pal-opt { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 1; }
+.palette.open .pal-opt.current { border-color: #ffd166; box-shadow: 0 0 0 3px rgba(255,209,102,0.5), 0 3px 10px rgba(0,0,0,0.5); }
+.palette.open .pal-opt.hover { transform: translate(var(--dx), var(--dy)) scale(1.22); }

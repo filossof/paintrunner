@@ -133,7 +133,8 @@
   const TOUCH = { menu: { x: 640, y: 4, w: 74, h: 22 }, restart: { x: 722, y: 4, w: 84, h: 22 } };
   const pad = document.createElement('div');
   pad.id = 'touchpad';
-  pad.innerHTML = '<div class="tbtn" data-k="ArrowLeft">◀</div><div class="tbtn" data-k="ArrowRight">▶</div><div class="tbtn jump" data-k="Space">▲<small>JUMP</small></div>';
+  pad.innerHTML = '<div class="tbtn" data-k="ArrowLeft">◀</div><div class="tbtn" data-k="ArrowRight">▶</div><div class="tbtn jump" data-k="Space">▲<small>JUMP</small></div>' +
+    '<div class="palette"><div class="pal-btn" aria-label="Choose a color"></div></div>';
   if (touchMode) document.body.appendChild(pad);
   const padBtn = (k) => pad.querySelector(`[data-k="${k}"]`);
   const touches = new Map();          // touch id -> { role, sx, sy (screen), x, y (game) }
@@ -168,7 +169,7 @@
       if (p.x >= x - 4 && p.x <= x + 74) return c;
       x += 82;
     }
-    return p.x >= x - 4 && p.x <= x + 74 ? 'wash' : null;
+    return null;
   }
   function syncTouchKeys() {
     const want = new Set();
@@ -183,6 +184,67 @@
     for (const el of pad.children) el.classList.toggle('on', touchKeys.has(el.dataset.k));
   }
   const tapMouse = (prop) => { mouse[prop] = true; setTimeout(() => { mouse[prop] = false; }, 60); };
+
+  // ---- the color palette (touch only): tap it and the level's colors fan out; tap one, or press the
+  //      palette, slide onto a color and let go ----
+  const palette = pad.querySelector('.palette'), palBtn = pad.querySelector('.pal-btn');
+  let palOpen = false, palKey = '';
+  const within = (t, el, m = 8) => { const r = el.getBoundingClientRect(); return t.clientX >= r.left - m && t.clientX <= r.right + m && t.clientY >= r.top - m && t.clientY <= r.bottom + m; };
+  const palOptions = () => [...palette.querySelectorAll('.pal-opt')];
+  function palOptionAt(t) {
+    if (!palOpen) return null;
+    // the nearest option within reach (forgiving for thumbs), measured where the options end up -
+    // not where they are mid-animation
+    const b = palette.getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;   // (the button itself shrinks when open)
+    const tb = b.width / 0.82, reach = tb * 0.54 * 1.0;
+    let best = null, bd = Infinity;
+    for (const el of palOptions()) {
+      const d = Math.hypot(t.clientX - (cx + el.dataset.fx * tb), t.clientY - (cy + el.dataset.fy * tb));
+      if (d < reach && d < bd) { best = el; bd = d; }
+    }
+    return best;
+  }
+  function setPalOpen(on) { palOpen = on; palette.classList.toggle('open', on); if (!on) palOptions().forEach((el) => el.classList.remove('hover')); }
+  function choosePal(el) {
+    const c = el.dataset.c;
+    if (c === 'wash') touchWash = true; else { game.color = Number(c); touchWash = false; }
+    sfx.select();
+    setPalOpen(false);
+  }
+  // (re)builds the fan for this level's colors and shows the current one on the button
+  function updatePalette() {
+    if (!game.world) return;
+    const cols = game.world.level.colors;
+    const key = cols.join() + '|' + game.color + '|' + touchWash;
+    if (key === palKey) return;
+    const rebuild = !palKey.startsWith(cols.join() + '|');
+    palKey = key;
+    const ring = cols.map((c) => COLOR_HEX[c]);
+    palBtn.style.setProperty('--cur', touchWash ? '#e8e4da' : COLOR_HEX[game.color]);
+    palBtn.style.setProperty('--ring', `conic-gradient(${[...ring, ring[0]].join(', ')})`);
+    palBtn.textContent = touchWash ? '🧽' : '';
+    if (rebuild) {
+      palOptions().forEach((el) => el.remove());
+      const items = [...cols.map((c) => ({ c, hex: COLOR_HEX[c], label: c === PURPLE ? 'Portal' : COLOR_NAME[c] })), { c: 'wash', hex: '#e8e4da', label: 'Wash' }];
+      // a fan from straight up, sweeping left and down toward the screen
+      const step = Math.min(30, 140 / Math.max(1, items.length - 1));
+      items.forEach((it, i) => {
+        const a = (266 - i * step) * Math.PI / 180;
+        const el = document.createElement('div');
+        el.className = 'pal-opt' + (it.c === 'wash' ? ' wash' : '');
+        el.dataset.c = it.c;
+        el.dataset.fx = (Math.cos(a) * 1.9).toFixed(3); el.dataset.fy = (Math.sin(a) * 1.9).toFixed(3);   // final offset, in button sizes
+        el.style.setProperty('--hex', it.hex);
+        el.style.setProperty('--dx', `calc(var(--tb) * ${(Math.cos(a) * 1.9).toFixed(3)})`);
+        el.style.setProperty('--dy', `calc(var(--tb) * ${(Math.sin(a) * 1.9).toFixed(3)})`);
+        el.style.transitionDelay = `${i * 22}ms`;
+        el.innerHTML = it.c === 'wash' ? '🧽' : '';
+        el.title = it.label;
+        palette.appendChild(el);
+      });
+    }
+    palOptions().forEach((el) => el.classList.toggle('current', el.dataset.c === (touchWash ? 'wash' : String(game.color))));
+  }
   // touches on the menu buttons and windows (store, leaderboards...) are left to the page
   const forPage = (e) => e.target.closest && e.target.closest('#overlay, .modal-back');
   if (touchMode) {
@@ -199,16 +261,24 @@
           continue;
         }
         let role = 'none';
+        if (palOpen) {                                     // open fan: pick a color, or close it
+          const opt = palOptionAt(t);
+          if (opt) choosePal(opt); else setPalOpen(false);
+          touches.set(t.identifier, { role: 'none', ...sp, ...p });
+          continue;
+        }
+        if (within(t, palBtn, 10)) {                       // open the fan (you can slide straight onto a color)
+          setPalOpen(true);
+          touches.set(t.identifier, { role: 'palette', ...sp, ...p });
+          continue;
+        }
         if (inMoveZone(t)) role = 'move';
         else if (inJumpZone(t)) role = 'jump';
         else if (onCanvas(t)) {
           if (inRect(p, TOUCH.menu)) pressed.add('Escape');
           else if (inRect(p, TOUCH.restart)) pressed.add('KeyR');
-          else if (chipAt(p) !== null) {
-            const c = chipAt(p);
-            if (c === 'wash') touchWash = !touchWash; else { game.color = c; touchWash = false; }
-            sfx.select();
-          } else if (p.y >= 30 && p.y <= H - 40) role = 'aim';                              // not on the HUD bars
+          else if (chipAt(p) !== null) { game.color = chipAt(p); touchWash = false; sfx.select(); }
+          else if (p.y >= 30 && p.y <= H - 40) role = 'aim';                              // not on the HUD bars
         }
         touches.set(t.identifier, { role, ...sp, ...p });
         if (role === 'aim') { mouse.x = p.x; mouse.y = p.y; }
@@ -222,6 +292,7 @@
         const o = touches.get(t.identifier); if (!o) continue;
         Object.assign(o, { sx: t.clientX, sy: t.clientY }, toGamePt(t));
         if (o.role === 'aim') { mouse.x = o.x; mouse.y = o.y; }
+        if (o.role === 'palette') { const opt = palOptionAt(t); palOptions().forEach((el) => el.classList.toggle('hover', el === opt)); }
       }
       syncTouchKeys();
     }, { passive: false });
@@ -232,6 +303,11 @@
         mine = true;
         touches.delete(t.identifier);
         if (o.role === 'aim' && e.type === 'touchend' && game.mode === 'play') { mouse.x = o.x; mouse.y = o.y; tapMouse(touchWash ? 'right' : 'down'); }
+        if (o.role === 'palette') {                     // slid onto a color: pick it; let go on the button: stay open for a tap
+          const last = { clientX: o.sx, clientY: o.sy };  // where the finger last was
+          const opt = palOptionAt(last);
+          if (opt) choosePal(opt); else if (!within(last, palBtn, 14)) setPalOpen(false);
+        }
       }
       if (mine) { e.preventDefault(); syncTouchKeys(); }
     };
@@ -242,6 +318,8 @@
   function showTouchpad() {
     const on = touchMode && game.mode === 'play' && !(typeof UI !== 'undefined' && UI.modalOpen) && innerWidth > innerHeight;
     if (pad.classList.contains('show') !== on) pad.classList.toggle('show', on);
+    if (!on && palOpen) setPalOpen(false);
+    if (on) updatePalette();
   }
 
 
@@ -962,13 +1040,6 @@
       text(label, x + 35, y + 12, c === PURPLE ? 11 : 12, c === YELLOW ? INK : '#fff', 'center');
       x += 82;
     });
-    if (touchMode) {
-      const y = H - 32;
-      if (touchWash) { ctx.fillStyle = '#fff'; roundRect(x - 3, y - 3, 76, 30, 8); ctx.fill(); }
-      ctx.fillStyle = '#e8e4da'; roundRect(x, y, 70, 24, 6); ctx.fill();
-      text('🧽 Wash', x + 35, y + 12, 12, INK, 'center');
-      x += 82;
-    }
     if (!touchMode) text(lv.hint, (x + W) / 2, H - 20, 14, '#fff', 'center', 500);
     else {
       // between the chips and the JUMP button: shrink the hint to fit, or leave it out
