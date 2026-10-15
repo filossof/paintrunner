@@ -1352,6 +1352,20 @@
   const hashLevel = /level=(\d+)/.exec(location.hash);
   if (hashLevel) Cloud.ready.then(() => play(Math.max(0, Math.min(LEVELS.length - 1, Number(hashLevel[1]) - 1))));
 
+  // ---------- music without waiting for a tap (where the browser allows) ----------
+  // On a phone held upright the game asks you to turn it, so the music waits until it's sideways.
+  // A tap while upright still unlocks audio, so the music starts the moment the phone is turned.
+  const upright = () => touchMode && innerHeight > innerWidth;
+  function musicForOrientation() {
+    Sound.hold(upright());
+    if (!upright()) Sound.tryAutoplay();
+  }
+  musicForOrientation();
+  addEventListener('resize', musicForOrientation);
+  addEventListener('orientationchange', () => setTimeout(musicForOrientation, 200));
+  // where autoplay is blocked, the very first touch, click or key anywhere on the page starts it
+  for (const ev of ['pointerdown', 'touchstart', 'keydown']) document.addEventListener(ev, () => Sound.init(), { capture: true, passive: true });
+
   // ---------- main loop ----------
   let last = performance.now(), acc = 0;
   const STEP = 1000 / 60;

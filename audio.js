@@ -17,7 +17,28 @@ const Sound = (() => {
       applyMusic();  // retry anything the browser blocked earlier
       return;
     }
-    try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { unlockTracks(); return; }
+    if (!setup()) { unlockTracks(); return; }
+    unlockTracks();
+    applyMusic();
+  }
+
+  // Tries to start the music without a tap. Most browsers block sound until the player has touched
+  // or pressed something; where they allow it (e.g. sites you visit often), the theme starts right
+  // away. If it's blocked nothing changes, and the first tap or key starts it as usual.
+  function tryAutoplay() {
+    if (!musicOn || (ctx && ctx.state === 'running')) return;
+    if (!setup()) return;
+    ctx.resume().then(() => {
+      if (ctx.state !== 'running') return;
+      unlockTracks();
+      applyMusic();
+    }).catch(() => { });
+  }
+
+  // The Web Audio graph for sound effects and music (made once).
+  function setup() {
+    if (ctx) return true;
+    try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return false; }
     master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -27,8 +48,7 @@ const Sound = (() => {
       if (document.hidden) ctx.suspend(); else ctx.resume();
       applyMusic();
     });
-    unlockTracks();
-    applyMusic();
+    return true;
   }
 
   // ---------- building blocks ----------
@@ -73,6 +93,7 @@ const Sound = (() => {
   const FADE = 0.7;            // seconds
   const players = {};          // name -> { el, gain (null if Web Audio routing isn't available) }
   let wanted = 'theme';        // which track the game currently wants
+  let held = false;            // music waits (e.g. a phone held upright, before the game is turned sideways)
   let musicBus = null;
 
   function track(name) {
@@ -112,14 +133,14 @@ const Sound = (() => {
   // ones not wanted right now pause again; later the game can start them from its loop.
   let unlocked = false;
   function unlockTracks() {
-    if (unlocked || !ctx) return;
+    if (unlocked || !ctx || ctx.state !== 'running') return;
     unlocked = true;
     for (const name of Object.keys(TRACKS)) {
       const p = track(name);
       if (!p.el.paused) continue;
       setLevel(p, 0, false);
       p.el.play()
-        .then(() => { if (name !== wanted || !musicOn) p.el.pause(); applyMusic(); })
+        .then(() => { if (name !== wanted || !musicOn || held) p.el.pause(); applyMusic(); })
         .catch(() => { unlocked = false; });   // try again on the next gesture
     }
   }
@@ -131,7 +152,7 @@ const Sound = (() => {
     const token = ++fadeToken;
     for (const name of Object.keys(TRACKS)) {
       const p = track(name);
-      const on = musicOn && name === wanted && !document.hidden;
+      const on = musicOn && name === wanted && !document.hidden && !held;
       if (on) {
         if (p.el.paused) p.el.play().catch(() => { });
         setLevel(p, TRACK_VOLUME[name], true);
@@ -139,7 +160,7 @@ const Sound = (() => {
         p.el.pause();                     // can't fade: stop at once so tracks never overlap
       } else if (!p.el.paused) {
         setLevel(p, 0, true);
-        setTimeout(() => { if (token === fadeToken && !(musicOn && name === wanted && !document.hidden)) p.el.pause(); }, FADE * 1000 + 50);
+        setTimeout(() => { if (token === fadeToken && !(musicOn && name === wanted && !document.hidden && !held)) p.el.pause(); }, FADE * 1000 + 50);
       }
     }
   }
@@ -150,6 +171,14 @@ const Sound = (() => {
     // a fresh level track starts from the top; the theme resumes where it was
     if (name === 'level' && players.level && players.level.el.paused) players.level.el.currentTime = 0;
     wanted = name;
+    applyMusic();
+  }
+
+  // Holds the music back (true) or lets it play (false). A tap while held still unlocks audio, so the
+  // music can start the moment the hold ends - without needing another tap.
+  function hold(on) {
+    if (held === on) return;
+    held = on;
     applyMusic();
   }
 
@@ -215,7 +244,7 @@ const Sound = (() => {
   };
 
   return {
-    init, sfx, toggleMusic, setTrack,
+    init, tryAutoplay, hold, sfx, toggleMusic, setTrack,
     get musicOn() { return musicOn; },
   };
 })();
