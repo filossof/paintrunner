@@ -48,6 +48,8 @@ canvas {
   align-items: center;
 }
 .corner.left { right: auto; left: 10px; }
+.corner.bottom { top: auto; bottom: 10px; }
+.btn.support { background: #fff4d6; color: var(--ink); text-decoration: none; }
 .chip, .btn {
   display: inline-flex;
   align-items: center;

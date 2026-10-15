@@ -34,7 +34,9 @@ const UI = (() => {
       `<button class="btn" data-act="store">🛍️ Store <small>(S)</small></button>` +
       `<button class="btn" data-act="full" title="Full screen (F)">⛶ Full screen <small>(F)</small></button>` +
       (Cloud.isAdmin ? `<a class="btn small" href="${Cloud.HOME_URL}stats.html" target="_blank" rel="noopener">📊 Stats</a>` : '');
-    overlay.innerHTML = `<div class="corner left">${left}</div><div class="corner">${right}</div>`;
+    // tips go through itch.io's own payment window, opened in a new tab
+    const support = `<a class="btn support" href="${SUPPORT_URL}" target="_blank" rel="noopener" title="Enjoying the game? Tip what you like">💛 Support</a>`;
+    overlay.innerHTML = `<div class="corner left">${left}</div><div class="corner">${right}</div><div class="corner left bottom">${support}</div>`;
   }
 
   overlay.addEventListener('click', async (e) => {

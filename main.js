@@ -1030,11 +1030,12 @@
           ['All levels complete. Thanks for playing.', 20, '#fff', 500],
           [`Stars: ${totalStars()} / ${LEVELS.length * 3}`, 24, '#ffd166', 800],
           ['Try beating your best times from the menu.', 18, 'rgba(255,255,255,0.7)', 500],
+          ['Enjoyed it? The 💛 Support button lets you tip what you like.', 16, '#ffd166', 600],
           ['Press ENTER', 16, 'rgba(255,255,255,0.6)', 500],
         ]);
       }
     }
-    if (embedded && !hasFocus) {
+    if (embedded && !hasFocus && game.mode === 'play') {
       ctx.globalAlpha = 0.9 + Math.sin(game.tick * 0.08) * 0.1;
       ctx.fillStyle = 'rgba(28,28,31,0.88)';
       roundRect(W / 2 - 170, H / 2 - 26, 340, 52, 14); ctx.fill();
