@@ -125,8 +125,8 @@
 
   // ---------- touch controls (phones and tablets; add #touch to the address to try them on a computer) ----------
   // ◀ ▶ at the far left and JUMP at the far right edge of the screen, see-through so the level shows
-  // behind them. Starting a level goes full screen (where the browser allows). Touch the game to aim - the trajectory follows
-  // your finger - and lift to throw. Tap a color chip to switch colors, the 🧽 chip to wash.
+  // behind them. Starting a level goes full screen (where the browser allows). Touch the level to throw paint toward your
+  // finger; hold to keep throwing. Tap a color chip to switch colors, the 🧽 chip to wash.
   // Menu and Restart are in the top bar.
   const touchMode = DEVICE !== 'computer' || /[#?&]touch/.test(location.href);
   document.body.classList.toggle('touch', touchMode);
@@ -202,6 +202,12 @@
     for (const el of pad.children) el.classList.toggle('on', touchKeys.has(el.dataset.k));
   }
   const tapMouse = (prop) => { mouse[prop] = true; setTimeout(() => { mouse[prop] = false; }, 60); };
+  // touching the level works like holding the mouse button: paint (or wash, with 🧽) keeps flying
+  // toward your finger until you lift it
+  function holdFire(on) {
+    mouse.down = on && !touchWash;
+    mouse.right = on && touchWash;
+  }
 
   // ---- the color palette (touch only): tap it and the level's colors fan out; tap one, or press the
   //      palette, slide onto a color and let go ----
@@ -301,8 +307,8 @@
           else if (chipAt(p) !== null) { game.color = chipAt(p); touchWash = false; sfx.select(); }
           else if (p.y >= 30 && p.y <= H - 40) role = 'aim';                              // not on the HUD bars
         }
-        touches.set(t.identifier, { role, ...sp, ...p });
-        if (role === 'aim') { mouse.x = p.x; mouse.y = p.y; }
+        touches.set(t.identifier, { role, ...sp, ...p, tick: game.tick });
+        if (role === 'aim') { mouse.x = p.x; mouse.y = p.y; holdFire(true); }   // fire now, and keep firing while held
       }
       syncTouchKeys();
     }, { passive: false });
@@ -323,7 +329,12 @@
         const o = touches.get(t.identifier); if (!o) continue;
         mine = true;
         touches.delete(t.identifier);
-        if (o.role === 'aim' && e.type === 'touchend' && game.mode === 'play') { mouse.x = o.x; mouse.y = o.y; tapMouse(touchWash ? 'right' : 'down'); }
+        if (o.role === 'aim') {
+          mouse.x = o.x; mouse.y = o.y;
+          // a very quick tap still throws once: keep the button down until the game has seen it
+          if (game.tick - o.tick < 2) setTimeout(() => { if (!touchAim()) holdFire(false); }, 40);
+          else if (!touchAim()) holdFire(false);
+        }
         if (o.role === 'palette') {                     // slid onto a color: pick it; let go on the button: stay open for a tap
           const last = { clientX: o.sx, clientY: o.sy };  // where the finger last was
           const opt = palOptionAt(last);
@@ -1160,7 +1171,7 @@
     const dropsW = ctx.measureText(`${drops().toLocaleString()} Paint Drops`).width;
     const fullW = ctx.measureText(`★ ${totalStars()} / ${LEVELS.length * 3} stars        ${drops().toLocaleString()} Paint Drops`).width;
     SHOP.drawDrop(ctx, W / 2 + fullW / 2 - dropsW - 12, 493, 6);
-    text(touchMode ? '◀ ▶ move · JUMP to jump · touch to aim, lift to throw · tap a color chip to switch' : 'A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen', W / 2, H - 22, 12, INK, 'center', 500);
+    text(touchMode ? '◀ ▶ move · ▲ ▼ climb · JUMP · touch the level to throw paint (hold to keep throwing) · 🎨 palette for colors' : 'A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen', W / 2, H - 22, 12, INK, 'center', 500);
     if (game.toast) text(game.toast.str, W / 2, 30, 14, INK, 'center', 600);
   }
 
