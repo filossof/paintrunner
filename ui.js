@@ -162,18 +162,17 @@ const UI = (() => {
     if (modal) close();
     const list = api.achievements();
     const done = list.filter((a) => a.done).length;
-    const earned = list.filter((a) => a.done).reduce((n, a) => n + a.reward, 0);
+    const earned = list.filter((a) => a.done).reduce((n, a) => n + a.reward, 0) + (done === list.length ? Achievements.ALL_BONUS : 0);
     modal = document.createElement('div');
     modal.className = 'modal-back';
     const tiers = Object.entries(Achievements.TIERS);
     const card = (a) => {
-      const hidden = a.secret && !a.done;
       const pct = a.goal && a.progress !== null ? Math.round(a.progress / a.goal * 100) : null;
       return `<div class="ach${a.done ? ' done' : ''}" style="--tier:${a.tierColor}">
-        <span class="ach-badge">${hidden ? '❔' : a.icon}</span>
+        <span class="ach-badge">${a.icon}</span>
         <span class="ach-text">
-          <b>${hidden ? 'Secret achievement' : esc(a.name)}</b>
-          <small>${hidden ? 'Keep playing to discover it…' : esc(a.desc)}</small>
+          <b>${esc(a.name)}</b>
+          <small>${esc(a.desc)}</small>
           ${!a.done && pct !== null ? `<span class="ach-bar"><i style="width:${pct}%"></i></span><small class="ach-num">${a.progress.toLocaleString()} / ${a.goal.toLocaleString()}</small>` : ''}
         </span>
         <span class="ach-reward">${a.done ? '✓' : `+${a.reward} 💧`}</span>
@@ -188,7 +187,7 @@ const UI = (() => {
         </div>
         <div class="modal-body">
           <div class="ach-progress"><i style="width:${Math.round(done / list.length * 100)}%"></i></div>
-          <p class="note">Unlock all ${list.length} to win the <b>🏆 Golden Trophy</b> hat - it can't be bought.</p>
+          <p class="note">Unlock all ${list.length} to win <b>+${Achievements.ALL_BONUS.toLocaleString()} 💧</b> and the <b>🏆 Golden Trophy</b> hat - it can't be bought.</p>
           ${tiers.map(([k, t]) => `<h3 class="ach-tier" style="--tier:${t.color}">${t.name} <small>+${t.reward} 💧 each</small></h3>
             <div class="ach-grid">${list.filter((a) => a.tier === k).map(card).join('')}</div>`).join('')}
         </div>

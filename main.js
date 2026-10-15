@@ -502,7 +502,8 @@
 
   function startLevel(i) {
     levelColors = new Set(); ceilingFrames = 0;
-    if (new Date().getHours() < 5) Achievements.unlock('night-owl');   // midnight to 5 am
+    if (new Date().getHours() === 18) Achievements.unlock('dinner-time');   // 6 to 7 pm
+    Achievements.playedToday();
     game.levelIdx = i;
     game.world = new World(LEVELS[i]);
     game.mode = 'play';
@@ -614,6 +615,7 @@
     store.set('unlocked', game.unlocked);
     if (w.deaths === 0 && game.levelIdx >= 24) Achievements.unlock('flawless');   // World 4 (yellow) or later, no falls
     if (w.throws === 1) Achievements.unlock('minimalist');
+    if (w.deaths === 0) Achievements.add('cleanRuns');
     achCheck();
     postResult(game.lastResult, true);
     game.mode = 'complete';
@@ -740,6 +742,8 @@
       spent: game.wallet.spent || 0,
       drops: drops(),
       outfit: ['hat', 'trail', 'skin', 'splat', 'flag'].filter((c) => game.wallet.equipped[c]).length,
+      owned: game.wallet.owned.filter((id) => id !== 'trophy').length,
+      finalePerfect: LEVELS.slice(40).filter((l) => (game.stars[l.name] || 0) >= 3).length,
       charsUnlocked: CHARACTERS.filter((c) => totalStars() >= c.stars).length,
     };
   }
@@ -762,14 +766,18 @@
           Achievements.max('mostThrows', w.throws);
           break;
         case 'respawn': levelColors = new Set(); break;
-        case 'can': Achievements.unlock('can-collector'); break;
-        case 'stomp': Achievements.unlock('stomp'); break;
+        case 'can': Achievements.unlock('can-collector'); Achievements.add('cans'); break;
+        case 'stomp': Achievements.unlock('stomp'); Achievements.add('stomps'); break;
+        case 'stun': Achievements.unlock('paintball'); break;
+        case 'jump': Achievements.add('jumps'); break;
         case 'bounce': Achievements.add('bounces'); lastBounceTick = game.tick; break;
-        case 'teleport': if (ev.who === 'monster') Achievements.unlock('monster-taxi'); else Achievements.add('teleports'); break;
+        case 'teleport': if (ev.who === 'monster') Achievements.unlock('monster-taxi'); else { Achievements.unlock('now-you-see-me'); Achievements.add('teleports'); } break;
         case 'shrink': if (ev.who === 'monster') Achievements.unlock('shrink-inky'); break;
         case 'monsterDie': if (ev.cause === 'lava' && ev.afterPortal) Achievements.unlock('lava-taxi'); break;
         case 'die': {
+          Achievements.add('deaths');
           if (ev.cause === 'lava') Achievements.add('lavaDeaths');
+          if (ev.cause === 'squashed') Achievements.unlock('pancake');
           if (ev.cause === 'spikes' && game.tick - lastBounceTick < 90) Achievements.unlock('bounce-danger');
           const f = w.level.flag;
           if (Math.hypot(ev.x - (f.c * T + T / 2), ev.y - (f.r * T)) <= 2.5 * T) Achievements.unlock('so-close');
@@ -778,12 +786,12 @@
       }
     }
   }
-  // unlocking: Paint Drops, a trophy card on screen, saved to the account; all 30 = the Golden Trophy hat
+  // unlocking: Paint Drops, a trophy card on screen, saved to the account; all of them = the Golden Trophy hat + 1,500 Drops
   let achSaveTimer = 0;
   Achievements.onUnlock = (a, reward, all) => {
     game.wallet.earned += reward;
     if (typeof UI !== 'undefined' && UI.refresh) setTimeout(() => UI.refresh(), 0);   // the 🏅 count on the menu
-    if (all && !game.wallet.owned.includes('trophy')) game.wallet.owned.push('trophy');
+    if (all && !game.wallet.owned.includes('trophy')) { game.wallet.owned.push('trophy'); game.wallet.earned += Achievements.ALL_BONUS; }
     saveWallet();
     showAchievement(a, reward, all);
     clearTimeout(achSaveTimer);
@@ -805,7 +813,7 @@
     const cards = batch.length > 3
       ? [{ icon: '🏆', title: `${batch.length} achievements unlocked!`, sub: `+${batch.reduce((n, b) => n + b.reward, 0)} Paint Drops · see them all in 🏅 Achievements` }]
       : batch.map((b) => ({ icon: b.a.icon, title: b.a.name, sub: `${b.a.desc} · +${b.reward} 💧`, tier: b.a.tier }));
-    if (batch.some((b) => b.all)) cards.push({ icon: '🏆', title: 'Every achievement!', sub: 'You earned the Golden Trophy hat. Find it in the store.', tier: 'hard' });
+    if (batch.some((b) => b.all)) cards.push({ icon: '🏆', title: 'Every achievement!', sub: `+${Achievements.ALL_BONUS.toLocaleString()} 💧 and the Golden Trophy hat. Find it in the store.`, tier: 'hard' });
     for (const c of cards) {
       const el = document.createElement('div');
       el.className = 'ach-toast' + (c.tier ? ' t-' + c.tier : '');

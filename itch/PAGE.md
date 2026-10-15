@@ -28,7 +28,7 @@ Monsters play by the same rules. Paint the floor under an Inky and watch it race
 - No checkpoints. Every level is a short, sharp run you can master
 - Online leaderboards for fastest time, fastest 3-can run and fewest throws
 - 12 unlockable characters, from Ink Blob to Paint Drop
-- 30 achievements - easy, hard and funny ones (some secret) - and an exclusive Golden Trophy hat for getting them all
+- 43 achievements - easy, hard and funny ones - with 1,500 Paint Drops and an exclusive Golden Trophy hat for getting them all
 - A cosmetic store with 40 hats, trails, colors, splats, flags and effects, bought with Paint Drops you earn by playing (nothing pay-to-win, no real money)
 - Original soundtrack
 
