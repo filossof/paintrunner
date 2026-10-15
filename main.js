@@ -131,11 +131,12 @@
   // Menu and Restart are in the top bar.
   const touchMode = DEVICE !== 'computer' || /[#?&]touch/.test(location.href);
   document.body.classList.toggle('touch', touchMode);
-  const TOUCH = { menu: { x: 640, y: 4, w: 74, h: 22 }, restart: { x: 722, y: 4, w: 84, h: 22 } };
   const pad = document.createElement('div');
   pad.id = 'touchpad';
   pad.innerHTML = '<div class="tbtn" data-k="ArrowLeft">◀</div><div class="tbtn" data-k="ArrowRight">▶</div>' +
     '<div class="tbtn small" data-k="ArrowUp">▲</div><div class="tbtn small" data-k="ArrowDown">▼</div>' +   // climb green walls, drop from ceilings
+    // Menu and Restart live down here, not in the top bar: on itch.io's mobile page its own toolbar covers the top edge
+    '<div class="tbtn mini" data-k="Escape" aria-label="Menu">☰</div><div class="tbtn mini" data-k="KeyR" aria-label="Restart">↺</div>' +
     '<div class="tbtn jump" data-k="Space">▲<small>JUMP</small></div>' +
     '<div class="palette"><div class="pal-btn" aria-label="Choose a color"></div></div>';
   if (touchMode) document.body.appendChild(pad);
@@ -300,12 +301,12 @@
           touches.set(t.identifier, { role: 'palette', ...sp, ...p });
           continue;
         }
-        if (inMoveZone(t)) role = 'move';
+        if (within(t, padBtn('Escape'), 6)) pressed.add('Escape');         // ☰ menu
+        else if (within(t, padBtn('KeyR'), 6)) pressed.add('KeyR');        // ↺ restart
+        else if (inMoveZone(t)) role = 'move';
         else if (inJumpZone(t)) role = 'jump';
         else if (onCanvas(t)) {
-          if (inRect(p, TOUCH.menu)) pressed.add('Escape');
-          else if (inRect(p, TOUCH.restart)) pressed.add('KeyR');
-          else if (chipAt(p) !== null) { game.color = chipAt(p); touchWash = false; sfx.select(); }
+          if (chipAt(p) !== null) { game.color = chipAt(p); touchWash = false; sfx.select(); }
           else if (p.y >= 30 && p.y <= H - 40) role = 'aim';                              // not on the HUD bars
         }
         touches.set(t.identifier, { role, ...sp, ...p, tick: game.tick });
@@ -1059,12 +1060,7 @@
     text(`${game.levelIdx + 1} / ${LEVELS.length}   ${lv.name}`, 12, 15, 15, '#fff');
     w.cans.forEach((can, i) => drawCan(W / 2 - 22 + i * 22, 16, 0.75, can.got, can.got ? COLOR_HEX[ALL_COLORS[i]] : '#55555c'));
     text(`${(w.state === 'won' && w.finishTime !== null ? w.finishTime : w.frame / 60).toFixed(3)}s`, W - 12, 15, 15, '#fff', 'right');
-    if (touchMode) {
-      for (const [b, label] of [[TOUCH.menu, '☰ Menu'], [TOUCH.restart, '↺ Restart']]) {
-        ctx.fillStyle = 'rgba(255,255,255,0.18)'; roundRect(b.x, b.y, b.w, b.h, 7); ctx.fill();
-        text(label, b.x + b.w / 2, b.y + b.h / 2 + 1, 12, '#fff', 'center', 800);
-      }
-    } else text(`R restart · Esc menu · M music ${Sound.musicOn ? 'on' : 'off'} · F full screen`, W - 80, 15, 12, 'rgba(255,255,255,0.55)', 'right', 500);
+    if (!touchMode) text(`R restart · Esc menu · M music ${Sound.musicOn ? 'on' : 'off'} · F full screen`, W - 80, 15, 12, 'rgba(255,255,255,0.55)', 'right', 500);
 
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, H - 40, W, 40);
