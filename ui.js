@@ -216,10 +216,12 @@ const UI = (() => {
           <span class="balance" aria-live="polite"><canvas class="drop-icon" aria-hidden="true"></canvas><b class="bal"></b> Paint Drops</span>
           <button class="close" data-act="close" aria-label="Close">✕</button>
         </div>
+        <div class="sheet-back" data-act="untry" hidden></div>
         <div class="store-body">
           <div class="store-stage">
             <canvas class="stage" aria-label="Your character wearing the selected items"></canvas>
             <div class="trying" hidden></div>
+            <div class="sheet-info"></div>
             <p class="note">Click an item to try it on. Earn Paint Drops by clearing levels, collecting new cans, beating your best times and playing every day.</p>
           </div>
           <div class="store-shop">
@@ -233,6 +235,8 @@ const UI = (() => {
       if (e.target === modal) return close();
       const t = e.target;
       if (t.closest('[data-act="close"]')) return close();
+      // phones: the try-on preview is a pop-up; a tap outside it (or on Close) closes it
+      if (t.closest('[data-act="untry"]') || (touchStore() && trying && !t.closest('.store-stage') && !t.closest('[data-try]'))) { trying = null; renderStore(); return; }
       const tb = t.closest('[data-tab]'); if (tb) { storeTab = tb.dataset.tab; trying = null; renderStore(); return; }
       const by = t.closest('[data-buy]');
       if (by) { if (api.buyItem(by.dataset.buy)) { trying = null; api.toast('Bought and equipped!'); } renderStore(); return; }
@@ -278,7 +282,17 @@ const UI = (() => {
     const tr = modal.querySelector('.trying');
     tr.hidden = !trying;
     if (trying) tr.textContent = `Trying on: ${SHOP.byId[trying].name}`;
+    // phones: the preview opens as a pop-up for the tapped item, with its buttons
+    const stage = modal.querySelector('.store-stage');
+    stage.classList.toggle('open', touchStore() && !!trying);
+    modal.querySelector('.sheet-back').hidden = !(touchStore() && trying);
+    const it = trying && SHOP.byId[trying];
+    modal.querySelector('.sheet-info').innerHTML = it
+      ? `<span class="rarity r-${it.rarity}">${SHOP.RARITY[it.rarity]}</span><h3>${esc(it.name)}</h3>${btn(it)}<button class="btn small" data-act="untry">Close</button>`
+      : '';
   }
+  // the store on phones and tablets: just the items; tapping one opens its preview as a pop-up
+  const touchStore = () => document.body.classList.contains('touch');
 
   // the try-on stage and item previews, animated while the store is open
   function startStoreAnim() {
