@@ -342,7 +342,10 @@
     palKey = key;
     const ring = cols.map((c) => COLOR_HEX[c]);
     palBtn.style.setProperty('--cur', touchWash ? '#e8e4da' : COLOR_HEX[game.color]);
-    palBtn.style.setProperty('--ring', `conic-gradient(${[...ring, ring[0]].join(', ')})`);
+    // the ring: one clear segment per color this level has (small gaps between), so it shows what's available
+    const gap = ring.length > 1 ? 4 : 0, seg = 360 / ring.length;
+    const stops = ring.map((c, i) => `${c} ${i * seg + gap / 2}deg ${(i + 1) * seg - gap / 2}deg, rgba(0,0,0,0) ${(i + 1) * seg - gap / 2}deg ${(i + 1) * seg + gap / 2}deg`);
+    palBtn.style.setProperty('--ring', `conic-gradient(from -90deg, rgba(0,0,0,0) 0deg ${gap / 2}deg, ${stops.join(', ')})`);
     palBtn.textContent = touchWash ? '🧽' : portals;   // purple: how many portals are placed
     if (rebuild) {
       palOptions().forEach((el) => el.remove());
