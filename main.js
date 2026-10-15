@@ -272,7 +272,7 @@
     palOptions().forEach((el) => el.classList.toggle('current', el.dataset.c === (touchWash ? 'wash' : String(game.color))));
   }
   // touches on the menu buttons and windows (store, leaderboards...) are left to the page
-  const forPage = (e) => e.target.closest && e.target.closest('#overlay, .modal-back');
+  const forPage = (e) => e.target.closest && e.target.closest('#overlay, .modal-back, #splash');
   if (touchMode) {
     document.addEventListener('touchstart', (e) => {
       if (forPage(e)) return;
@@ -1364,7 +1364,8 @@
   addEventListener('resize', musicForOrientation);
   addEventListener('orientationchange', () => setTimeout(musicForOrientation, 200));
   // where autoplay is blocked, the very first touch, click or key anywhere on the page starts it
-  for (const ev of ['pointerdown', 'touchstart', 'keydown']) document.addEventListener(ev, () => Sound.init(), { capture: true, passive: true });
+  // (a touch only counts as interacting when the finger lifts, so touchend / pointerup are in the list)
+  for (const ev of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'keydown']) document.addEventListener(ev, () => Sound.init(), { capture: true, passive: true });
 
   // ---------- main loop ----------
   let last = performance.now(), acc = 0;

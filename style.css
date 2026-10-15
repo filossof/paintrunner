@@ -343,3 +343,65 @@ body.touch .store-stage.open .sheet-info { display: grid; gap: 10px; justify-ite
 @media (orientation: portrait) { body.touch .store-stage.open { grid-template-columns: 1fr; } }
 .sheet-back { position: fixed; inset: 0; z-index: 29; background: rgba(10, 10, 12, 0.55); }
 .sheet-back[hidden] { display: none; }
+
+/* ---------- splash: "Tap to start" (splash.js) ---------- */
+#splash {
+  position: fixed; inset: 0; z-index: 100; overflow: hidden; cursor: pointer;
+  display: grid; place-items: center;
+  background: radial-gradient(ellipse at 50% 45%, #f6f3ec 0%, #efece4 55%, #e2ddd0 100%);
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.55s ease;
+}
+#splash.sp-out { opacity: 0; pointer-events: none; }
+#splash:focus-visible { outline: none; }
+/* watercolor splotches drifting behind everything */
+.sp-blob { position: absolute; width: 32vmax; height: 32vmax; opacity: 0.9; border-radius: 46% 54% 60% 40% / 52% 44% 56% 48%; animation: sp-morph 9s ease-in-out infinite alternate; }
+.sp-blob.b1 { background: #2f7bff; left: -13vmax; top: -12vmax; }
+.sp-blob.b2 { background: #ff3b4e; right: -13vmax; top: -8vmax; width: 29vmax; height: 29vmax; animation-delay: -2s; }
+.sp-blob.b3 { background: #1fc160; left: 34%; bottom: -24vmax; width: 26vmax; height: 26vmax; animation-delay: -4s; }
+.sp-blob.b4 { background: #ffc93c; left: -10vmax; bottom: -12vmax; width: 22vmax; height: 22vmax; animation-delay: -6s; }
+.sp-blob.b5 { background: #9b5de5; right: -9vmax; bottom: -11vmax; width: 24vmax; height: 24vmax; animation-delay: -1s; }
+@keyframes sp-morph {
+  0% { border-radius: 46% 54% 60% 40% / 52% 44% 56% 48%; transform: translate(0, 0) rotate(0deg) scale(1); }
+  100% { border-radius: 58% 42% 44% 56% / 44% 58% 42% 56%; transform: translate(2vmax, 1.5vmax) rotate(18deg) scale(1.06); }
+}
+/* paint dripping from the top edge */
+.sp-drips { position: absolute; left: 0; right: 0; top: 0; height: 0; display: flex; justify-content: space-around; z-index: 1; }
+.sp-drips i {
+  width: clamp(10px, 1.6vmax, 22px); height: var(--len, 60px); border-radius: 0 0 999px 999px; transform-origin: top;
+  animation: sp-drip 3.6s ease-in-out infinite alternate; position: relative;
+}
+.sp-drips i::after { content: ''; position: absolute; left: 50%; bottom: -35%; width: 130%; aspect-ratio: 1; transform: translateX(-50%); border-radius: 50%; background: inherit; }
+.sp-drips i:nth-child(5n+1) { background: #2f7bff; } .sp-drips i:nth-child(5n+2) { background: #ff3b4e; }
+.sp-drips i:nth-child(5n+3) { background: #1fc160; } .sp-drips i:nth-child(5n+4) { background: #ffc93c; } .sp-drips i:nth-child(5n) { background: #9b5de5; }
+.sp-drips i:nth-child(1) { --len: 7vmin; } .sp-drips i:nth-child(2) { --len: 12vmin; animation-delay: -1s; } .sp-drips i:nth-child(3) { --len: 5vmin; animation-delay: -2s; }
+.sp-drips i:nth-child(4) { --len: 10vmin; animation-delay: -0.5s; } .sp-drips i:nth-child(5) { --len: 6vmin; animation-delay: -2.5s; } .sp-drips i:nth-child(6) { --len: 14vmin; animation-delay: -1.5s; }
+.sp-drips i:nth-child(7) { --len: 8vmin; animation-delay: -3s; } .sp-drips i:nth-child(8) { --len: 11vmin; animation-delay: -0.8s; } .sp-drips i:nth-child(9) { --len: 6vmin; animation-delay: -2.2s; }
+.sp-drips i:nth-child(10) { --len: 13vmin; animation-delay: -1.2s; } .sp-drips i:nth-child(11) { --len: 7vmin; animation-delay: -2.8s; } .sp-drips i:nth-child(12) { --len: 9vmin; animation-delay: -0.3s; }
+@keyframes sp-drip { from { transform: scaleY(0.75); } to { transform: scaleY(1.15); } }
+/* the middle: title, a little scene, the start button */
+.sp-main { position: relative; z-index: 2; display: grid; justify-items: center; gap: clamp(4px, 1.4vmin, 14px); padding: 16px; text-align: center; }
+.sp-title {
+  margin: 0; font: 900 clamp(44px, 13vmin, 132px)/0.92 var(--font); letter-spacing: 0.01em; color: #fff;
+  -webkit-text-stroke: clamp(4px, 1.1vmin, 9px) var(--ink); paint-order: stroke fill;
+  text-shadow: clamp(4px, 0.9vmin, 8px) clamp(5px, 1vmin, 9px) 0 var(--ink);
+  animation: sp-bob 3s ease-in-out infinite;
+}
+@keyframes sp-bob { 50% { transform: translateY(-0.6vmin) rotate(-0.6deg); } }
+.sp-tag { margin: 0; font: 800 clamp(14px, 2.6vmin, 24px) var(--font); color: var(--ink); }
+.sp-scene { width: min(64vw, 30vmin * 2.4, 460px); height: clamp(70px, 17vmin, 150px); display: block; }
+.sp-start {
+  width: clamp(64px, 15vmin, 120px); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+  border: clamp(3px, 0.6vmin, 5px) solid var(--ink); box-shadow: 0.6vmin 0.8vmin 0 var(--ink);
+  animation: sp-colors 5s linear infinite, sp-pulse 1.4s ease-in-out infinite;
+}
+.sp-play { width: 0; height: 0; margin-left: 12%; border-style: solid; border-color: transparent transparent transparent #fff;
+  border-width: clamp(13px, 3.2vmin, 26px) 0 clamp(13px, 3.2vmin, 26px) clamp(21px, 5.2vmin, 42px); filter: drop-shadow(0 2px 0 rgba(0,0,0,0.25)); }
+@keyframes sp-colors { 0%, 100% { background: #2f7bff; } 20% { background: #ff3b4e; } 40% { background: #1fc160; } 60% { background: #ffc93c; } 80% { background: #9b5de5; } }
+@keyframes sp-pulse { 50% { transform: scale(1.08); } }
+.sp-label { margin: 0; font: 900 clamp(16px, 3.4vmin, 30px) var(--font); color: var(--ink); letter-spacing: 0.02em; }
+.sp-foot { position: absolute; bottom: 10px; left: 0; right: 0; margin: 0; text-align: center; z-index: 2; font: 700 clamp(11px, 1.8vmin, 15px) var(--font); color: var(--ink-2); }
+/* leaving: five colors flood out from the tap */
+.sp-burst i { position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; z-index: 5; transform: scale(0); animation: sp-flood 0.6s cubic-bezier(.2,.7,.3,1) forwards; }
+@keyframes sp-flood { to { transform: scale(var(--s, 300)); } }
+@media (prefers-reduced-motion: reduce) { #splash *, #splash { animation: none !important; transition: none !important; } }

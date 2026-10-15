@@ -6,9 +6,22 @@
   <title>Paint Runner</title>
   <meta name="description" content="A black & white world. Throw paint to change it.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
-  <link rel="stylesheet" href="style.css?v=42">
+  <link rel="stylesheet" href="style.css?v=44">
 </head>
 <body>
+  <!-- "Tap to start": browsers need one tap before the music may play (see splash.js) -->
+  <div id="splash" role="button" tabindex="0" aria-label="Start Paint Runner">
+    <div class="sp-drips" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="sp-blob b1"></div><div class="sp-blob b2"></div><div class="sp-blob b3"></div><div class="sp-blob b4"></div><div class="sp-blob b5"></div>
+    <div class="sp-main">
+      <h1 class="sp-title">PAINT<br>RUNNER</h1>
+      <p class="sp-tag">Throw paint. Change the world.</p>
+      <canvas class="sp-scene" aria-hidden="true"></canvas>
+      <div class="sp-start"><span class="sp-play" aria-hidden="true"></span></div>
+      <p class="sp-label">Tap to start</p>
+    </div>
+    <p class="sp-foot">🎧 Best with sound on</p>
+  </div>
   <div id="stage">
     <canvas id="game"></canvas>
     <div id="overlay" hidden></div>
@@ -16,15 +29,16 @@
   <script src="vendor/firebase-app-compat.js"></script>
   <script src="vendor/firebase-auth-compat.js"></script>
   <script src="vendor/firebase-firestore-compat.js"></script>
-  <script src="config.js?v=42"></script>
-  <script src="cloud.js?v=42"></script>
-  <script src="characters.js?v=42"></script>
-  <script src="shop.js?v=42"></script>
-  <script src="levels.js?v=42"></script>
-  <script src="art.js?v=42"></script>
-  <script src="world.js?v=42"></script>
-  <script src="audio.js?v=42"></script>
-  <script src="ui.js?v=42"></script>
-  <script src="main.js?v=42"></script>
+  <script src="config.js?v=44"></script>
+  <script src="cloud.js?v=44"></script>
+  <script src="characters.js?v=44"></script>
+  <script src="shop.js?v=44"></script>
+  <script src="levels.js?v=44"></script>
+  <script src="art.js?v=44"></script>
+  <script src="world.js?v=44"></script>
+  <script src="audio.js?v=44"></script>
+  <script src="ui.js?v=44"></script>
+  <script src="main.js?v=44"></script>
+  <script src="splash.js?v=44"></script>
 </body>
 </html>

@@ -25,15 +25,22 @@ const Sound = (() => {
   // Tries to start the music without a tap. Most browsers block sound until the player has touched
   // or pressed something; where they allow it (e.g. sites you visit often), the theme starts right
   // away. If it's blocked nothing changes, and the first tap or key starts it as usual.
+  // Resolves true if sound is allowed now (so no tap is needed).
   function tryAutoplay() {
-    if (!musicOn || (ctx && ctx.state === 'running')) return;
-    if (!setup()) return;
-    ctx.resume().then(() => {
-      if (ctx.state !== 'running') return;
+    if (ctx && ctx.state === 'running') return Promise.resolve(true);
+    if (!setup()) return Promise.resolve(false);
+    return ctx.resume().then(() => {
+      if (ctx.state !== 'running') return false;
       unlockTracks();
       applyMusic();
-    }).catch(() => { });
+      // only "allowed" if the menu music really started (a running audio engine isn't proof)
+      return new Promise((r) => setTimeout(() => r(soundAllowed()), 350));
+    }).catch(() => false);
   }
+  // true once the browser lets us make sound: the audio engine runs and the wanted track plays
+  // (or the player has turned music off)
+  const soundAllowed = () => !!ctx && ctx.state === 'running' && unlocked &&
+    (!musicOn || held || (players[wanted] && !players[wanted].el.paused));
 
   // The Web Audio graph for sound effects and music (made once).
   function setup() {
@@ -244,7 +251,7 @@ const Sound = (() => {
   };
 
   return {
-    init, tryAutoplay, hold, sfx, toggleMusic, setTrack,
+    init, tryAutoplay, soundAllowed, hold, sfx, toggleMusic, setTrack,
     get musicOn() { return musicOn; },
   };
 })();
