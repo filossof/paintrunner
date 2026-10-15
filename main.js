@@ -29,10 +29,19 @@
   };
 
   // ---------- scaling ----------
+  // Room the touch buttons need on each side (see #touchpad in style.css: size = --tb, 8px margins).
+  function touchSide() {
+    const tb = Math.round(Math.max(56, Math.min(84, window.innerHeight * 0.2)));
+    document.documentElement.style.setProperty('--tb', tb + 'px');
+    return { l: 2 * tb + 26, r: tb + 18 };
+  }
   let scale = 1, dpr = 1;
   function resize() {
     dpr = window.devicePixelRatio || 1;
-    scale = Math.min(window.innerWidth / W, window.innerHeight / H); // as big as fits, same shape
+    // as big as fits, same shape; with touch controls, keep the sides free for the buttons
+    const side = document.body.classList.contains('touch') ? touchSide() : { l: 0, r: 0 };
+    document.body.style.paddingLeft = side.l + 'px'; document.body.style.paddingRight = side.r + 'px';
+    scale = Math.min((window.innerWidth - side.l - side.r) / W, window.innerHeight / H);
     canvas.style.width = Math.floor(W * scale) + 'px';
     canvas.style.height = Math.floor(H * scale) + 'px';
     canvas.width = Math.floor(W * scale * dpr);
@@ -113,20 +122,26 @@
   const tapped = (...codes) => codes.some((c) => pressed.has(c));
 
   // ---------- touch controls (phones and tablets; add #touch to the address to try them on a computer) ----------
-  // ◀ ▶ bottom-left, jump bottom-right; touch anywhere else to aim (the trajectory follows your finger)
-  // and lift to throw. Tap a color chip to switch colors, the 🧽 chip to wash. Menu and Restart are in the top bar.
+  // ◀ ▶ at the far left and JUMP at the far right, in the space beside the game (the game shrinks a
+  // little if needed so they never cover the level). Touch the game to aim - the trajectory follows
+  // your finger - and lift to throw. Tap a color chip to switch colors, the 🧽 chip to wash.
+  // Menu and Restart are in the top bar.
   const touchMode = DEVICE !== 'computer' || /[#?&]touch/.test(location.href);
   document.body.classList.toggle('touch', touchMode);
-  const TOUCH = {
-    left: { x: 70, y: 436, r: 40 }, right: { x: 168, y: 436, r: 40 }, jump: { x: 886, y: 430, r: 48 },
-    menu: { x: 640, y: 4, w: 74, h: 22 }, restart: { x: 722, y: 4, w: 84, h: 22 },
-  };
-  const touches = new Map();          // touch id -> { role, x, y }
+  if (touchMode) resize();            // make room for the buttons beside the game
+  const TOUCH = { menu: { x: 640, y: 4, w: 74, h: 22 }, restart: { x: 722, y: 4, w: 84, h: 22 } };
+  const pad = document.createElement('div');
+  pad.id = 'touchpad';
+  pad.innerHTML = '<div class="tbtn" data-k="ArrowLeft">◀</div><div class="tbtn" data-k="ArrowRight">▶</div><div class="tbtn jump" data-k="Space">▲<small>JUMP</small></div>';
+  if (touchMode) document.body.appendChild(pad);
+  const padBtn = (k) => pad.querySelector(`[data-k="${k}"]`);
+  const touches = new Map();          // touch id -> { role, sx, sy (screen), x, y (game) }
   const touchKeys = new Set();        // keys currently held down by touch buttons
   let touchWash = false;              // the 🧽 chip: throws wash paint off instead of painting
   const touchAim = () => [...touches.values()].some((t) => t.role === 'aim');
   const toGamePt = (t) => { const r = canvas.getBoundingClientRect(); return { x: (t.clientX - r.left) / r.width * W, y: (t.clientY - r.top) / r.height * H }; };
-  const inCircle = (p, b) => Math.hypot(p.x - b.x, p.y - b.y) < b.r * 1.3;
+  const onCanvas = (t) => { const r = canvas.getBoundingClientRect(); return t.clientX >= r.left && t.clientX <= r.right && t.clientY >= r.top && t.clientY <= r.bottom; };
+  const hitBtn = (t, el) => { const r = el.getBoundingClientRect(), m = 12; return t.clientX >= r.left - m && t.clientX <= r.right + m && t.clientY >= r.top - m && t.clientY <= r.bottom + m; };
   const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y - 4 && p.y <= b.y + b.h + 6;
   // the color chips in the bottom bar (and the wash chip after them), as drawn by drawHud
   function chipAt(p) {
@@ -141,68 +156,77 @@
   }
   function syncTouchKeys() {
     const want = new Set();
+    const l = padBtn('ArrowLeft').getBoundingClientRect(), r = padBtn('ArrowRight').getBoundingClientRect();
+    const mid = (l.left + l.right + r.left + r.right) / 4;
     for (const t of touches.values()) {
-      if (t.role === 'move') want.add(t.x < (TOUCH.left.x + TOUCH.right.x) / 2 ? 'ArrowLeft' : 'ArrowRight');   // slide between them
+      if (t.role === 'move') want.add(t.sx < mid ? 'ArrowLeft' : 'ArrowRight');   // slide between them
       if (t.role === 'jump') want.add('Space');
     }
     for (const k of want) if (!touchKeys.has(k)) { touchKeys.add(k); if (!keys.has(k)) pressed.add(k); keys.add(k); }
     for (const k of [...touchKeys]) if (!want.has(k)) { touchKeys.delete(k); keys.delete(k); }
+    for (const el of pad.children) el.classList.toggle('on', touchKeys.has(el.dataset.k));
   }
   const tapMouse = (prop) => { mouse[prop] = true; setTimeout(() => { mouse[prop] = false; }, 60); };
+  // touches on the menu buttons and windows (store, leaderboards...) are left to the page
+  const forPage = (e) => e.target.closest && e.target.closest('#overlay, .modal-back');
   if (touchMode) {
-    canvas.addEventListener('touchstart', (e) => {
+    document.addEventListener('touchstart', (e) => {
+      if (forPage(e)) return;
       e.preventDefault(); Sound.init(); grabFocus();
       for (const t of e.changedTouches) {
-        const p = toGamePt(t);
-        if (game.mode === 'title' && p.y > 362 && p.y < 434 && (p.x < 420 || p.x > 540)) { pressed.add(p.x < 420 ? 'ArrowLeft' : 'ArrowRight'); continue; }   // ◀ ▶ around the level name
-        if (game.mode !== 'play') { mouse.x = p.x; mouse.y = p.y; tapMouse('down'); continue; }   // menus: a tap is a click
-        let role = 'aim';
-        if (inCircle(p, TOUCH.left) || inCircle(p, TOUCH.right)) role = 'move';
-        else if (inCircle(p, TOUCH.jump)) role = 'jump';
-        else if (inRect(p, TOUCH.menu)) { pressed.add('Escape'); role = 'none'; }
-        else if (inRect(p, TOUCH.restart)) { pressed.add('KeyR'); role = 'none'; }
-        else if (chipAt(p) !== null) {
-          const c = chipAt(p);
-          if (c === 'wash') touchWash = !touchWash; else { game.color = c; touchWash = false; }
-          sfx.select(); role = 'none';
-        } else if (p.y < 30 || p.y > H - 40) role = 'none';   // the rest of the HUD bars
-        touches.set(t.identifier, { role, ...p });
+        const sp = { sx: t.clientX, sy: t.clientY }, p = toGamePt(t);
+        if (game.mode !== 'play') {
+          if (!onCanvas(t)) continue;
+          if (game.mode === 'title' && p.y > 362 && p.y < 434 && (p.x < 420 || p.x > 540)) { pressed.add(p.x < 420 ? 'ArrowLeft' : 'ArrowRight'); continue; }   // ◀ ▶ around the level name
+          mouse.x = p.x; mouse.y = p.y; tapMouse('down');                                   // menus: a tap is a click
+          continue;
+        }
+        let role = 'none';
+        if (hitBtn(t, padBtn('ArrowLeft')) || hitBtn(t, padBtn('ArrowRight'))) role = 'move';
+        else if (hitBtn(t, padBtn('Space'))) role = 'jump';
+        else if (onCanvas(t)) {
+          if (inRect(p, TOUCH.menu)) pressed.add('Escape');
+          else if (inRect(p, TOUCH.restart)) pressed.add('KeyR');
+          else if (chipAt(p) !== null) {
+            const c = chipAt(p);
+            if (c === 'wash') touchWash = !touchWash; else { game.color = c; touchWash = false; }
+            sfx.select();
+          } else if (p.y >= 30 && p.y <= H - 40) role = 'aim';                              // not on the HUD bars
+        }
+        touches.set(t.identifier, { role, ...sp, ...p });
         if (role === 'aim') { mouse.x = p.x; mouse.y = p.y; }
       }
       syncTouchKeys();
     }, { passive: false });
-    canvas.addEventListener('touchmove', (e) => {
+    document.addEventListener('touchmove', (e) => {
+      if (forPage(e)) return;
       e.preventDefault();
       for (const t of e.changedTouches) {
         const o = touches.get(t.identifier); if (!o) continue;
-        Object.assign(o, toGamePt(t));
+        Object.assign(o, { sx: t.clientX, sy: t.clientY }, toGamePt(t));
         if (o.role === 'aim') { mouse.x = o.x; mouse.y = o.y; }
       }
       syncTouchKeys();
     }, { passive: false });
     const end = (e) => {
-      e.preventDefault();
+      let mine = false;
       for (const t of e.changedTouches) {
         const o = touches.get(t.identifier); if (!o) continue;
+        mine = true;
         touches.delete(t.identifier);
         if (o.role === 'aim' && e.type === 'touchend' && game.mode === 'play') { mouse.x = o.x; mouse.y = o.y; tapMouse(touchWash ? 'right' : 'down'); }
       }
-      syncTouchKeys();
+      if (mine) { e.preventDefault(); syncTouchKeys(); }
     };
-    canvas.addEventListener('touchend', end, { passive: false });
-    canvas.addEventListener('touchcancel', end, { passive: false });
+    document.addEventListener('touchend', end, { passive: false });
+    document.addEventListener('touchcancel', end, { passive: false });
   }
-  function drawTouchControls() {
-    const btn = (b, on, draw) => {
-      ctx.globalAlpha = on ? 0.6 : 0.32; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = on ? 0.95 : 0.7; ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.stroke();
-      ctx.fillStyle = INK; draw(b); ctx.globalAlpha = 1;
-    };
-    const tri = (b, d) => { ctx.beginPath(); ctx.moveTo(b.x + d * 14, b.y); ctx.lineTo(b.x - d * 9, b.y - 15); ctx.lineTo(b.x - d * 9, b.y + 15); ctx.closePath(); ctx.fill(); };
-    btn(TOUCH.left, keys.has('ArrowLeft'), (b) => tri(b, -1));
-    btn(TOUCH.right, keys.has('ArrowRight'), (b) => tri(b, 1));
-    btn(TOUCH.jump, keys.has('Space'), (b) => { ctx.beginPath(); ctx.moveTo(b.x, b.y - 17); ctx.lineTo(b.x + 17, b.y + 7); ctx.lineTo(b.x - 17, b.y + 7); ctx.closePath(); ctx.fill(); text('JUMP', b.x, b.y + 22, 11, INK, 'center', 900); });
+  // the buttons only show while playing (and not behind a window or the "turn sideways" screen)
+  function showTouchpad() {
+    const on = touchMode && game.mode === 'play' && !(typeof UI !== 'undefined' && UI.modalOpen) && innerWidth > innerHeight;
+    if (pad.classList.contains('show') !== on) pad.classList.toggle('show', on);
   }
+
 
   // ---------- game state ----------
   const game = {
@@ -956,7 +980,6 @@
     drawParticles();
     ART.vignette(ctx);
     if (!touchMode || touchAim()) drawAim(w);
-    if (touchMode && game.mode === 'play') drawTouchControls();
   }
 
   function splotch(x, y, r, color, seed) {
@@ -1153,6 +1176,7 @@
       text('Turn your phone sideways to play', W / 2, H / 2 + 40, 30, '#fff', 'center', 800);
     }
     if (!touchMode || touchAim()) drawCursor();
+    showTouchpad();
   }
 
   // Handy for poking at the game from the browser console.
