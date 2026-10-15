@@ -11,13 +11,13 @@ const Sound = (() => {
 
   // Browsers only allow audio after a user gesture, so this runs on every key press / click.
   function init() {
-    unlockTracks();
     if (ctx) {
       if (ctx.state === 'suspended') ctx.resume();
+      unlockTracks();
       applyMusic();  // retry anything the browser blocked earlier
       return;
     }
-    try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { unlockTracks(); return; }
     master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -27,6 +27,7 @@ const Sound = (() => {
       if (document.hidden) ctx.suspend(); else ctx.resume();
       applyMusic();
     });
+    unlockTracks();
     applyMusic();
   }
 
@@ -64,70 +65,90 @@ const Sound = (() => {
   }
 
   // ---------- music: two MP3 tracks, menu theme and level background ----------
+  // Only one track ever plays. Volume and fades go through Web Audio gain nodes: iPhones ignore an
+  // audio element's own volume (it's always full), which used to leave both tracks playing at once.
   const TRACKS = { theme: 'music/theme.mp3', level: 'music/level.mp3' };
   // The level track sits under the sound effects; the menu theme can be fuller.
   const TRACK_VOLUME = { theme: 0.5, level: 0.22 };
-  const FADE_MS = 700;
-  const players = {};
-  let wanted = 'theme';   // which track the game currently wants
-  let fadeTimer = null;
+  const FADE = 0.7;            // seconds
+  const players = {};          // name -> { el, gain (null if Web Audio routing isn't available) }
+  let wanted = 'theme';        // which track the game currently wants
+  let musicBus = null;
 
   function track(name) {
     if (!players[name]) {
-      const a = new Audio(TRACKS[name]);
-      a.loop = true;
-      a.preload = 'auto';
-      a.volume = 0;
-      players[name] = a;
+      const el = new Audio(TRACKS[name]);
+      el.loop = true;
+      el.preload = 'auto';
+      let gain = null;
+      if (ctx) {
+        try {
+          musicBus = musicBus || ctx.createGain();
+          musicBus.connect(ctx.destination);
+          gain = ctx.createGain();
+          gain.gain.value = 0;
+          ctx.createMediaElementSource(el).connect(gain).connect(musicBus);
+        } catch (e) { gain = null; }
+      }
+      if (!gain) el.volume = 0;
+      players[name] = { el, gain };
     }
     return players[name];
   }
-
-  // Some browsers (Safari especially) only let an audio element play if play() was first
-  // called during a click or key press. Start every track silently inside the first
-  // gesture so the level track can start later from the game loop.
-  let unlocked = false;
-  function unlockTracks() {
-    if (unlocked) return;
-    unlocked = true;
-    for (const name of Object.keys(TRACKS)) {
-      const a = track(name);
-      if (!a.paused) continue;
-      a.volume = 0;
-      a.play()
-        .then(() => { if (a.volume === 0 && name !== wanted) a.pause(); })
-        .catch(() => { unlocked = false; }); // try again on the next gesture
+  const level = (p) => (p.gain ? p.gain.gain.value : p.el.volume);
+  function setLevel(p, v, fade) {
+    if (p.gain) {
+      const g = p.gain.gain, now = ctx.currentTime;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(v, now + (fade ? FADE : 0.01));
+    } else {
+      p.el.volume = v;   // no fades here; tracks that should be silent are paused right away instead
     }
   }
 
-  // Fades the wanted track in and every other track out.
+  // Some browsers (Safari especially) only let an audio element play if play() was first called
+  // during a tap or key press. So inside the first gesture every track starts (silently) and the
+  // ones not wanted right now pause again; later the game can start them from its loop.
+  let unlocked = false;
+  function unlockTracks() {
+    if (unlocked || !ctx) return;
+    unlocked = true;
+    for (const name of Object.keys(TRACKS)) {
+      const p = track(name);
+      if (!p.el.paused) continue;
+      setLevel(p, 0, false);
+      p.el.play()
+        .then(() => { if (name !== wanted || !musicOn) p.el.pause(); applyMusic(); })
+        .catch(() => { unlocked = false; });   // try again on the next gesture
+    }
+  }
+
+  // Fades the wanted track in and every other track out, then pauses the silent ones.
+  let fadeToken = 0;
   function applyMusic() {
     if (!ctx) return;  // nothing may play before the first click / key press
-    clearInterval(fadeTimer);
-    const target = (name) => (musicOn && name === wanted && !document.hidden ? TRACK_VOLUME[name] : 0);
-    const all = Object.keys(TRACKS).map((n) => [n, track(n)]);
-    for (const [name, a] of all) {
-      if (target(name) > 0 && a.paused) a.play().catch(() => { });
-    }
-    const step = 0.5 / (FADE_MS / 30);
-    fadeTimer = setInterval(() => {
-      let done = true;
-      for (const [name, a] of all) {
-        const t = target(name);
-        const v = a.volume < t ? Math.min(t, a.volume + step) : Math.max(t, a.volume - step);
-        a.volume = v;
-        if (v !== t) done = false;
-        if (v === 0 && !a.paused) a.pause();
+    const token = ++fadeToken;
+    for (const name of Object.keys(TRACKS)) {
+      const p = track(name);
+      const on = musicOn && name === wanted && !document.hidden;
+      if (on) {
+        if (p.el.paused) p.el.play().catch(() => { });
+        setLevel(p, TRACK_VOLUME[name], true);
+      } else if (!p.gain) {
+        p.el.pause();                     // can't fade: stop at once so tracks never overlap
+      } else if (!p.el.paused) {
+        setLevel(p, 0, true);
+        setTimeout(() => { if (token === fadeToken && !(musicOn && name === wanted && !document.hidden)) p.el.pause(); }, FADE * 1000 + 50);
       }
-      if (done) clearInterval(fadeTimer);
-    }, 30);
+    }
   }
 
   // 'theme' on menus, 'level' while playing. Switching to the same track keeps it going.
   function setTrack(name) {
     if (name === wanted) return;
     // a fresh level track starts from the top; the theme resumes where it was
-    if (name === 'level' && players.level && players.level.volume === 0) players.level.currentTime = 0;
+    if (name === 'level' && players.level && players.level.el.paused) players.level.el.currentTime = 0;
     wanted = name;
     applyMusic();
   }
