@@ -647,6 +647,12 @@
       if (tapped('Enter', 'Space', 'Escape') || mouse.down) { mouse.down = false; game.mode = 'title'; game.menuIdx = game.unlocked; }
     } else if (game.mode === 'play') {
       const w = game.world;
+      // phone turned upright mid-level: everything waits (timer, monsters, platforms, paint in
+      // flight) until it's turned back; fingers on the buttons are let go
+      if (touchMode && innerHeight > innerWidth) {
+        touches.clear(); syncTouchKeys(); keys.clear(); pressed.clear(); mouse.down = mouse.right = false;
+        return;
+      }
       if (tapped('Escape')) { logAbandon(); game.mode = 'title'; game.menuIdx = game.levelIdx; pressed.clear(); return; }
       if (tapped('KeyR')) { logAbandon(); startLevel(game.levelIdx); pressed.clear(); return; }
       const cols = w.level.colors;
@@ -1319,7 +1325,10 @@
     if (touchMode && innerHeight > innerWidth) {          // phone held upright: the levels are wide
       ctx.fillStyle = 'rgba(15,15,18,0.92)'; ctx.fillRect(0, 0, W, H);
       text('↻', W / 2, H / 2 - 50, 90, '#fff', 'center', 900);
-      text('Turn your phone sideways to play', W / 2, H / 2 + 40, 30, '#fff', 'center', 800);
+      if (game.mode === 'play') {
+        text('Paused', W / 2, H / 2 + 34, 44, '#ffd166', 'center', 900);
+        text('Turn your phone sideways to continue', W / 2, H / 2 + 84, 26, '#fff', 'center', 800);
+      } else text('Turn your phone sideways to play', W / 2, H / 2 + 40, 30, '#fff', 'center', 800);
     }
     if (!touchMode || touchAim()) drawCursor();
     showTouchpad();
