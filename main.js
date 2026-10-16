@@ -654,7 +654,7 @@
         result.cloud = ranks;
         if (ranks && [ranks.fastest, ranks.perfect, ranks.efficient].includes(1)) Achievements.unlock('top-board');
         // now that the time is on the leaderboard, this run can be your ghost for everyone else
-        if (ghost) Cloud.saveGhost(lv.name, ghost).then((saved) => { if (saved) delete topGhosts[lv.name]; }).catch((e) => console.warn('ghost', e.code || e));
+        if (ghost) uploadGhost(lv.name, ghost);
       })
       .catch((e) => { console.warn('submitScore', e); result.cloud = 'error'; });
   }
@@ -782,6 +782,24 @@
       .then((r) => { topGhosts[name] = { ...r, at: Date.now() }; show(r); })
       .catch((e) => { console.warn('ghost', e.code || e); if (req === ghostReq) mine(); });
   }
+  // your run becomes your ghost in your account (if it's your fastest there)
+  function uploadGhost(name, g) {
+    return Cloud.saveGhost(name, g)
+      .then((saved) => { Ghost.markUploaded(name, g); if (saved) delete topGhosts[name]; })
+      .catch((e) => console.warn('ghost', e.code || e));
+  }
+  // catch up on runs recorded but never uploaded, once per sign-in, one at a time
+  let ghostsSyncedFor = null;
+  async function uploadPendingGhosts() {
+    if (!online() || !Cloud.user || ghostsSyncedFor === Cloud.user.uid) return;
+    ghostsSyncedFor = Cloud.user.uid;
+    for (const [name, g] of Ghost.pending(LEVELS.map((l) => l.name))) {
+      if (!Cloud.user) return;
+      await uploadGhost(name, g);
+    }
+  }
+  if (online()) Cloud.onChange((u) => { if (u) setTimeout(uploadPendingGhosts, 4000); });   // after the progress sync
+
   function setGhostMode(m) {
     Ghost.setMode(m);
     if (game.mode === 'play') loadGhost(game.levelIdx);

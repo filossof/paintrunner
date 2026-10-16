@@ -98,8 +98,18 @@ const Ghost = (() => {
     return { x: p[0] + (q[0] - p[0]) * k, y: p[1] + (q[1] - p[1]) * k, fl: k < 0.5 ? p[2] : q[2], done: false };
   }
 
+  // your own runs that haven't reached your account yet (e.g. saved while offline, or before the
+  // database accepted ghosts): [levelName, ghost]
+  function pending(names) {
+    return names.map((n) => [n, loadMine(n)]).filter(([, g]) => g && !g.up);
+  }
+  function markUploaded(name, g) {
+    const cur = loadMine(name);
+    if (cur && cur.time === g.time) store.set(localKey(name), { ...cur, up: true });
+  }
+
   return {
-    MODES, SMALL, LEFT, AIR, MOVING, CLING,
+    MODES, pending, markUploaded, SMALL, LEFT, AIR, MOVING, CLING,
     get mode() { return mode || 'off'; },
     chosen: () => mode !== null,
     setMode(m) { if (MODES.includes(m)) { mode = m; store.set(KEY, m); } },
