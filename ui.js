@@ -151,7 +151,6 @@ const UI = (() => {
   }
 
   function close() {
-    gateThen = null;
     if (modal) modal.remove();
     modal = null;
     cancelAnimationFrame(charAnim);
@@ -235,54 +234,6 @@ const UI = (() => {
       if (b) { api.setControls(b.dataset.scheme); render(); api.toast(`Controls: ${CONTROL_SCHEMES.find((c) => c.id === b.dataset.scheme).name}`); }
     });
     modal.querySelector('.close').focus();
-  }
-
-  // ---------- sign in to play ----------
-  // Playing needs a Google account. Shown when a signed-out player tries to start a level;
-  // once they sign in it closes and `then` starts the level they picked.
-  let gateThen = null;
-  function openSignInGate(then) {
-    if (modal) close();
-    gateThen = then;
-    modal = document.createElement('div');
-    modal.className = 'modal-back';
-    const offline = !Cloud.available;
-    modal.innerHTML = `
-      <div class="modal gate" role="dialog" aria-modal="true" aria-labelledby="gate-title" style="max-width:460px">
-        <div class="modal-head">
-          <h2 id="gate-title">🎨 Sign in to play</h2>
-          <button class="close" data-act="close" aria-label="Close">✕</button>
-        </div>
-        <div class="modal-body" style="text-align:center;display:grid;gap:14px;padding-bottom:22px">
-          <p style="margin:0">Paint Runner saves your progress, stars and Paint Drops to your Google account, so they follow you to any computer, and your best times go on the leaderboards.</p>
-          ${offline
-            ? '<p class="error" style="margin:0">Can\'t reach the sign-in service right now. Check your internet connection and refresh the page.</p>'
-            : `<button class="btn big" data-act="gate-signin" style="justify-self:center;font-size:17px;padding:12px 22px">${GOOGLE_G} Sign in with Google</button>`}
-          <p class="gate-msg note" style="margin:0" hidden></p>
-          ${Cloud.embedded ? `<p class="note" style="margin:0">Sign-in not working here? <a href="${Cloud.HOME_URL}" target="_blank" rel="noopener">Open the game in a new tab</a></p>` : ''}
-          <p class="note" style="margin:0">We only show your first name and last initial on leaderboards.</p>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-    modal.addEventListener('click', async (e) => {
-      if (e.target === modal) return close();
-      const t = e.target.closest('[data-act]');
-      if (!t) return;
-      if (t.dataset.act === 'close') close();
-      if (t.dataset.act === 'gate-signin') {
-        const msg = modal.querySelector('.gate-msg');
-        try {
-          await Cloud.signIn();
-        } catch (err) {
-          console.error(err);
-          msg.hidden = false;
-          msg.innerHTML = err.code === 'embedded'
-            ? `Your browser blocked sign-in on this page. <a href="${Cloud.HOME_URL}" target="_blank" rel="noopener">Play in a new tab</a> instead.`
-            : 'Sign-in didn\'t work. Please try again.';
-        }
-      }
-    });
-    (modal.querySelector('[data-act=gate-signin]') || modal.querySelector('.close')).focus();
   }
 
   // ---------- store ----------
@@ -595,7 +546,6 @@ const UI = (() => {
       Cloud.onChange((u) => {
         render();
         if (u) sync();
-        if (u && gateThen) { const then = gateThen; close(); then(); }   // signed in from the gate: go play
       });
       render();
     },
@@ -603,7 +553,6 @@ const UI = (() => {
     openLeaderboard,
     openCharacters,
     openStore,
-    openSignInGate,
     openControls,
     openAchievements,
     refresh: () => render(),

@@ -41,7 +41,7 @@ Monsters play by the same rules. Paint the floor under an Inky and watch it race
 
 Best played with a keyboard and mouse.
 
-**Sign in with Google to play.** Your progress, stars and Paint Drops are saved to your account and follow you to any computer. Leaderboards only show your first name and last initial. If your browser blocks sign-in inside this page, use the "Open the game in a new tab" link in the game.
+**Just hit play, no account needed.** Sign in with Google (optional) to put your times on the leaderboards and save your progress, stars and Paint Drops to your account so they follow you to any computer. Leaderboards only show your first name and last initial.
 
 **Free to play.** If you enjoy it, a tip helps a lot and tells me to keep making more worlds. 💛
 

@@ -716,18 +716,8 @@
     game.mode = 'title';
   }
 
-  // Playing needs a Google account: signed-out players get the sign-in window instead,
-  // which starts the level once they're in.
-  function play(i) {
-    if (Cloud.user) return startLevel(i);
-    if (!Cloud.isReady) {
-      showToast('Checking sign-in…', 4000);
-      if (!play.waiting) { play.waiting = true; Cloud.ready.then(() => { play.waiting = false; game.toast = null; if (game.mode === 'title' || game.mode === 'complete') play(i); }); }
-      return;
-    }
-    pressed.clear(); keys.clear();
-    if (typeof UI !== 'undefined') UI.openSignInGate(() => startLevel(i));
-  }
+  // Anyone can play; signing in (optional) saves progress to the account and adds the leaderboards.
+  function play(i) { startLevel(i); }
 
   // ---------- achievements (list and saving: achievements.js) ----------
   let levelColors = new Set(), lastBounceTick = -999, ceilingFrames = 0;
@@ -1404,7 +1394,7 @@
     const st = game.stars[lv.name] || 0;
     text(best ? `${'★'.repeat(st)}${'☆'.repeat(3 - st)}   Best: ${best.toFixed(3)}s` : 'Not cleared yet', W / 2 + 40, 412, 13, best ? '#ffd166' : 'rgba(255,255,255,0.65)', 'center', 600);
 
-    if (Math.floor(game.tick / 30) % 2 === 0) text(touchMode ? (Cloud.user ? 'Tap to play' : 'Tap to sign in and play') : `${Cloud.user ? 'Press ENTER or click to play' : 'Click to sign in and play'}  ·  L leaderboards  ·  C characters  ·  S store`, W / 2, 462, 16, INK, 'center', 700);
+    if (Math.floor(game.tick / 30) % 2 === 0) text(touchMode ? 'Tap to play' : `Press ENTER or click to play  ·  L leaderboards  ·  C characters  ·  S store`, W / 2, 462, 16, INK, 'center', 700);
 
     text(`★ ${totalStars()} / ${LEVELS.length * 3} stars        ${drops().toLocaleString()} Paint Drops`, W / 2, 492, 15, INK, 'center', 800);
     ctx.font = '800 15px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
@@ -1600,7 +1590,7 @@
 
   // Dev shortcut: index.html#level=3 jumps straight into a level.
   const hashLevel = /level=(\d+)/.exec(location.hash);
-  if (hashLevel) Cloud.ready.then(() => play(Math.max(0, Math.min(LEVELS.length - 1, Number(hashLevel[1]) - 1))));
+  if (hashLevel) play(Math.max(0, Math.min(LEVELS.length - 1, Number(hashLevel[1]) - 1)));
 
   // ---------- music without waiting for a tap (where the browser allows) ----------
   // On a phone held upright the game asks you to turn it, so the music waits until it's sideways.
