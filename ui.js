@@ -244,6 +244,13 @@ const UI = (() => {
           <p class="note">${scheme.text}</p>
         </section>` : ''}
         <section class="set-sec">
+          <h3>📖 Story</h3>
+          <div class="set-switches">
+            <button class="btn small" data-story="intro">▶ The Great Fade</button>
+            ${api.endingUnlocked() ? '<button class="btn small" data-story="ending">▶ Chapter 2 teaser</button>' : '<button class="btn small" disabled title="Finish level 45 to unlock">🔒 The ending</button>'}
+          </div>
+        </section>
+        <section class="set-sec">
           <h3>🔊 Sound</h3>
           <div class="set-switches">
             <button class="switch" role="switch" aria-checked="${Sound.musicOn}" data-switch="music"><i></i>Music${touch ? '' : ' <kbd>M</kbd>'}</button>
@@ -258,6 +265,8 @@ const UI = (() => {
     render();
     modal.addEventListener('click', (e) => {
       if (e.target === modal || e.target.closest('[data-act="close"]')) return close();
+      const st = e.target.closest('[data-story]');
+      if (st) { close(); api.playStory(st.dataset.story); return; }
       const t = e.target.closest('[data-ghost], [data-scheme], [data-switch], [data-act="full"]');
       if (!t) return;
       if (t.dataset.ghost) api.setGhostMode(t.dataset.ghost);

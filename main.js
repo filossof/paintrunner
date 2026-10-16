@@ -82,7 +82,7 @@
   const mouse = { x: W / 2, y: H / 2, down: false, right: false };
 
   const GAME_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'];
-  const uiBusy = () => typeof UI !== 'undefined' && UI.modalOpen;
+  const uiBusy = () => (typeof UI !== 'undefined' && UI.modalOpen) || (typeof Story !== 'undefined' && Story.playing);
   window.addEventListener('keydown', (e) => {
     if (uiBusy()) return;
     if (GAME_KEYS.includes(e.code)) e.preventDefault();
@@ -948,7 +948,7 @@
   function update() {
     game.tick++;
     // catch up on achievements earned before they existed, once the splash is gone
-    if (!achReady && !document.getElementById('splash')) { achReady = true; achCheck(); }
+    if (!achReady && !document.getElementById('splash') && !(typeof Story !== 'undefined' && Story.playing)) { achReady = true; achCheck(); }
     if (game.shake > 0) game.shake--;
     if (game.toast && --game.toast.t <= 0) game.toast = null;
 
@@ -986,7 +986,7 @@
         else {
           game.mode = 'end';
           // the first time through the last level: the Chapter 2 teaser
-          if (typeof Story !== 'undefined' && !store.get('seenEnding', false)) { store.set('seenEnding', true); keys.clear(); Story.play('ending'); }
+          if (typeof Story !== 'undefined' && !store.get('seenEnding', false)) { store.set('seenEnding', true); playStory('ending'); }
         }
       }
       if (tapped('KeyR')) play(game.levelIdx);
@@ -1788,11 +1788,21 @@
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
   window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
 
-  // Story preview: index.html#story plays the opening comic once the splash is gone
-  // (and #ending plays the Chapter 2 teaser shown after level 45)
+  // ---------- the story ----------
+  // The opening comic plays once for every player, right after the "tap to start" screen.
+  // (index.html#story / #ending play a scene on demand; links straight to a level skip it.)
+  function playStory(which) {
+    keys.clear(); pressed.clear(); mouse.down = mouse.right = false;
+    if (which === 'intro') store.set('seenIntro', true);
+    Story.play(which, () => { keys.clear(); pressed.clear(); mouse.down = false; });
+  }
   const storyHash = /ending/.test(location.hash) ? 'ending' : /story/.test(location.hash) ? 'intro' : null;
-  if (storyHash) {
-    const wait = setInterval(() => { if (typeof Story !== 'undefined' && !document.getElementById('splash')) { clearInterval(wait); Story.play(storyHash); } }, 200);
+  if (storyHash || (!store.get('seenIntro', false) && !/level=|nosplash/.test(location.hash))) {
+    const wait = setInterval(() => {
+      if (typeof Story === 'undefined' || document.getElementById('splash')) return;
+      clearInterval(wait);
+      if (game.mode === 'title') playStory(storyHash || 'intro');
+    }, 150);
   }
 
   // every visit reaches the stats dashboard; signed-out players play as anonymous guests
@@ -1821,6 +1831,8 @@
       setControls: (s) => setScheme(s),
       setGhostMode,
       look,
+      playStory,
+      endingUnlocked: () => store.get('seenEnding', false) || (LEVELS.length > 0 && game.best[LEVELS[LEVELS.length - 1].name] !== undefined),
     });
   }
 

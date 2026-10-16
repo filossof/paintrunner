@@ -12,6 +12,8 @@ A black & white world. Throw paint to change it.
 
 **The world is black and white. You have the paint.**
 
+The Eraser scrubbed every color out of the world, and his Washers locked them away in paint cans. One little ink blob was missed, and it still has a can of blue. Run, paint, and bring the colors home.
+
 Paint Runner is a hand-inked puzzle platformer. You can't jump high enough, run fast enough or climb anything by yourself, but every surface you paint gains a power:
 
 - 🔵 **Blue** - bounce sky-high
@@ -31,6 +33,7 @@ Monsters play by the same rules. Paint the floor under an Inky and watch it race
 - 12 unlockable characters, from Ink Blob to Paint Drop
 - 43 achievements - easy, hard and funny ones - with 1,500 Paint Drops and an exclusive Golden Trophy hat for getting them all
 - A cosmetic store with 40 hats, trails, colors, splats, flags and effects, bought with Paint Drops you earn by playing (nothing pay-to-win, no real money)
+- A story told in hand-drawn comic scenes, and Chapter 2 is on its way
 - Original soundtrack
 
 **Controls**
