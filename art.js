@@ -368,7 +368,9 @@ const ART = (() => {
   //   parallax- the drawing behind the level shifts a little as you move: depth
   //   flood   - finishing a level washes the whole page in your colors
   // ============================================================
-  const opts = { color: 'off', living: false, parallax: false, flood: false };
+  // living backgrounds and parallax are the look for everyone (still, for players who ask for less motion)
+  const calm = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const opts = { color: 'off', living: !calm, parallax: !calm, flood: false };
   const layered = () => opts.color !== 'off' || opts.living || opts.parallax || opts.flood;
 
   // the sketch in layers, for living/parallax backgrounds (cached per level)
@@ -497,7 +499,7 @@ const ART = (() => {
   function bloom(x, y, col, size = 1) {
     if (opts.color === 'off' && !opts.flood) return;
     if (opts.color === 'off' && size < 2) return;
-    blooms.push({ x, y, col, r: (46 + Math.random() * 20) * size, seed: Math.floor(Math.random() * 1000), born: performance.now(), dur: 900 + size * 500, strength: size > 1 ? 0.9 : 1 });
+    blooms.push({ x, y, col, r: (18 + Math.random() * 8) * size, seed: Math.floor(Math.random() * 1000), born: performance.now(), dur: 500 + size * 300, strength: 0.85 });
   }
   // finishing a level: big blooms of your colors roll out from the flag across the page
   function flood(x, y, cols) {
