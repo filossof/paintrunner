@@ -370,7 +370,7 @@
     palOptions().forEach((el) => el.classList.toggle('current', el.dataset.c === (touchWash ? 'wash' : String(game.color))));
   }
   // touches on the menu buttons and windows (store, leaderboards...) are left to the page
-  const forPage = (e) => e.target.closest && e.target.closest('#overlay, .modal-back, #splash, #artlab');
+  const forPage = (e) => e.target.closest && e.target.closest('#overlay, .modal-back, #splash');
   if (touchMode) {
     document.addEventListener('touchstart', (e) => {
       if (forPage(e)) return;
@@ -518,6 +518,7 @@
     pops = [];
     particles = [];
     squash = 1;
+    resetHero();
   }
 
   function cycleColor(d) {
@@ -540,14 +541,14 @@
     achEvents(world);
     for (const ev of world.events) {
       switch (ev.type) {
-        case 'jump': sfx.jump(); squash = 1.25; break;
+        case 'jump': sfx.jump(); squash = 1.25; puff(ev.x, ev.y, 3, 0.7); break;
         case 'bounce': sfx.bounce(); squash = 1.4; burst(ev.x, ev.y, COLOR_HEX[BLUE], 10, 3, 3); break;
-        case 'throw': sfx.throw(); break;
+        case 'throw': sfx.throw(); hero.recoil = 1; break;
         case 'splat':
           if (ev.color && !ev.quiet) {                     // paint splatter stays on the paper for the whole level
             stains.push(ART.makeStain(ev.x, ev.y, COLOR_HEX[ev.color]));
             if (stains.length > 60) stains.shift();
-            if (ev.painted) ART.bloom(ev.x, ev.y, COLOR_HEX[ev.color], surfaceAlong(world, ev.x, ev.y));   // (art lab) the color soaks into the paper
+            if (ev.painted) ART.bloom(ev.x, ev.y, COLOR_HEX[ev.color], surfaceAlong(world, ev.x, ev.y));   // the color soaks into the paper around it
           }
           if (ev.painted && look().splat) splatMarks.push({ x: ev.x, y: ev.y, col: ev.color ? COLOR_HEX[ev.color] : '#f4f1ea', life: 1.4, seed: Math.random() * 6 });
           if (ev.quiet) { /* yellow shot hit the player; grow/shrink plays instead */ }
@@ -555,7 +556,15 @@
           burst(ev.x, ev.y, ev.color ? COLOR_HEX[ev.color] : '#f4f1ea', ev.painted ? 14 : 6, 3.5, 4);
           break;
         case 'stick': sfx.stick(); break;
-        case 'land': sfx.land(); squash = 0.7; break;
+        case 'land': {
+          // the harder the fall, the flatter the squash and the bigger the dust; a really big drop leaves you seeing stars
+          sfx.land();
+          const k = Math.min(1, (ev.v - 4) / 9);
+          squash = 0.82 - k * 0.22;
+          puff(ev.x, ev.y, 3 + Math.round(k * 6), 0.8 + k * 0.8);
+          if (ev.v >= MAX_FALL - 0.5) hero.dizzy = 1.2;
+          break;
+        }
         case 'shrink': sfx.shrink(); squash = 0.6; burst(ev.x, ev.y, COLOR_HEX[YELLOW], 16, 3, 3); break;
         case 'grow': sfx.grow(); squash = 1.4; burst(ev.x, ev.y, COLOR_HEX[YELLOW], 16, 4, 4); break;
         case 'die':
@@ -1030,6 +1039,7 @@
       for (const sm of splatMarks) sm.life -= 1 / 60;
       splatMarks = splatMarks.filter((sm) => sm.life > 0);
       pops = SHOP.stepBurst(pops, 1 / 60);
+      stepHero(w);
       const dist = pl.cling === 1 || pl.cling === -1 ? Math.abs(pl.vy) : Math.abs(pl.vx);
       runPhase = (runPhase + dist / (24 * pl.h / 40)) % 1;
       handleEvents(w);
@@ -1317,6 +1327,45 @@
   }
 
 
+  // ---------- the hero's body language (works for every character) ----------
+  // leaning into runs, stretching in the air, breathing when still, a kick back when throwing,
+  // dust, speed streaks on red, looking around and then dozing off when left alone, dizzy stars
+  const hero = { idle: 0, lean: 0, recoil: 0, dizzy: 0, prevVx: 0, dustT: 0 };
+  let puffs = [];
+  function resetHero() { Object.assign(hero, { idle: 0, lean: 0, recoil: 0, dizzy: 0, prevVx: 0, dustT: 0 }); puffs = []; }
+  // soft pencil-gray dust clouds at the feet
+  function puff(x, y, n, size = 1, dir = 0) {
+    for (let i = 0; i < n; i++) {
+      const side = dir || (i % 2 ? 1 : -1);
+      puffs.push({ x: x + (Math.random() - 0.5) * 8, y: y - 2, vx: side * (0.6 + Math.random() * 1.6) * size, vy: -(0.2 + Math.random() * 0.6) * size,
+        r: (2.5 + Math.random() * 2.5) * size, life: 1, fade: 0.025 + Math.random() * 0.02 });
+    }
+  }
+  function stepHero(w) {
+    const p = w.player, still = p.grounded && !p.cling && Math.abs(p.vx) < 0.2 && w.state === 'play';
+    hero.idle = still ? hero.idle + 1 / 60 : 0;
+    // lean: into the run on the ground, with the motion in the air
+    const target = p.cling ? 0 : p.grounded ? Math.max(-0.16, Math.min(0.16, p.vx * 0.022)) : Math.max(-0.12, Math.min(0.12, p.vx * 0.015));
+    hero.lean += (target - hero.lean) * 0.18;
+    hero.recoil *= 0.84;
+    hero.dizzy = Math.max(0, hero.dizzy - 1 / 60);
+    // running dust, and a skid when you turn around fast
+    if (p.grounded && !p.cling) {
+      const fast = Math.abs(p.vx) > RUN * 0.9;
+      if (fast && ++hero.dustT % (Math.abs(p.vx) > RUN * 1.5 ? 4 : 9) === 0) puff(p.x + p.w / 2 - Math.sign(p.vx) * p.w * 0.4, p.y + p.h, 1, 0.6, -Math.sign(p.vx));
+      if (Math.sign(p.vx) !== Math.sign(hero.prevVx) && Math.abs(hero.prevVx) > RUN * 0.8) puff(p.x + p.w / 2, p.y + p.h, 4, 0.8, Math.sign(hero.prevVx));
+    }
+    hero.prevVx = p.vx;
+    for (const d of puffs) { d.x += d.vx; d.y += d.vy; d.vx *= 0.92; d.vy *= 0.92; d.r += 0.12; d.life -= d.fade; }
+    puffs = puffs.filter((d) => d.life > 0);
+  }
+  function drawPuffs() {
+    for (const d of puffs) {
+      ctx.fillStyle = `rgba(90,84,76,${0.28 * d.life})`;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
   function drawPlayer(w) {
     const p = w.player;
     if (w.state === 'dead') return;
@@ -1324,20 +1373,55 @@
     const wall = p.cling === 1 || p.cling === -1;
     const moving = p.cling ? (Math.abs(p.vx) + Math.abs(p.vy) > 0.3 ? 1 : 0)
       : p.grounded ? Math.min(1, Math.abs(p.vx) / RUN) : 0;
+    const t = game.tick / 60;
+    // left alone: look around after a few seconds, then nod off (eyes shut, z z z)
+    const asleep = hero.idle > 9, lookAround = hero.idle > 3.5 && !asleep && Math.floor((hero.idle - 3.5) / 1.3) % 2 === 1;
+    // stretch going up, round at the top, a little long again falling; slow breathing when still
+    let stretch = 1;
+    if (!p.grounded && !p.cling) stretch = p.vy < -1.5 ? 1 + Math.min(0.12, -p.vy * 0.012) : p.vy > 4 ? 1 + Math.min(0.07, (p.vy - 4) * 0.01) : 0.96;
+    if (p.grounded && !p.cling && hero.idle > 0.4) stretch *= 1 + Math.sin(t * (asleep ? 1.6 : 2.6)) * (asleep ? 0.04 : 0.022);
     const o = {
-      s: k, col: COLOR_HEX[game.color], t: game.tick / 60, run: runPhase, moving,
-      air: !p.grounded && p.cling !== 2, face: wall ? p.cling : p.face, squash: p.cling ? 1 : squash,
+      s: k, col: COLOR_HEX[game.color], t: asleep ? 0.05 : t, run: runPhase, moving,
+      air: !p.grounded && p.cling !== 2, face: wall ? p.cling : lookAround ? -p.face : p.face,
+      squash: p.cling ? 1 : squash * stretch * (1 - hero.recoil * 0.06),
     };
-    if (p.grounded && !p.cling) ART.shadow(ctx, p.x + p.w / 2, p.y + p.h, p.w * 0.6);
+    if (p.grounded && !p.cling) ART.shadow(ctx, p.x + p.w / 2, p.y + p.h, p.w * 0.6 * (2 - stretch));
+    // speed streaks behind you on red paint
+    if (p.grounded && Math.abs(p.vx) > RUN * 1.4) {
+      const dir = Math.sign(p.vx), a = Math.min(1, (Math.abs(p.vx) - RUN * 1.4) / (RED_RUN - RUN * 1.4));
+      ctx.strokeStyle = `rgba(28,28,31,${0.35 * a})`; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+      for (let i = 0; i < 3; i++) {
+        const y = p.y + p.h * (0.3 + i * 0.22), x0 = p.x + p.w / 2 - dir * (p.w * 0.7 + i * 3), len = 14 + ((game.tick * 3 + i * 7) % 12);
+        ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 - dir * len, y); ctx.stroke();
+      }
+    }
     ctx.save();
     if (p.cling === 2) {                      // hanging from a green ceiling: upside down, feet on the ceiling
       ctx.translate(p.x + p.w / 2, p.y);
       ctx.scale(1, -1);
     } else {
       ctx.translate(p.x + p.w / 2, p.y + p.h);
+      ctx.rotate(hero.lean - p.face * hero.recoil * 0.12);   // pivots at the feet
     }
     SHOP.drawHero(ctx, currentCharacter(), o, look());
     ctx.restore();
+    const top = p.cling === 2 ? p.y + p.h + 10 : p.y - 8;
+    if (asleep) {                              // z z z
+      for (let i = 0; i < 3; i++) {
+        const ph = ((t * 0.5 + i / 3) % 1);
+        ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.8;
+        text('z', p.x + p.w / 2 + p.face * (6 + ph * 14), top - ph * 22, 9 + ph * 7, INK, 'center', 800);
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (hero.dizzy > 0) {                      // stars circling the head
+      ctx.globalAlpha = Math.min(1, hero.dizzy * 2);
+      for (let i = 0; i < 3; i++) {
+        const a = t * 7 + i * 2.1, x = p.x + p.w / 2 + Math.cos(a) * p.w * 0.75, y = top + 2 + Math.sin(a) * 3.5;
+        text('★', x, y, 9, Math.sin(a) > 0 ? '#ffc93c' : '#c9a227', 'center', 800);
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   function drawCosmetics(w) {
@@ -1457,6 +1541,7 @@
     drawCosmetics(w);
     drawBlobs(w);
     drawGhost(w);
+    drawPuffs();
     drawPlayer(w);
     SHOP.drawBurst(ctx, pops, look().pop);
     drawParticles();
@@ -1698,39 +1783,6 @@
   // Handy for poking at the game from the browser console.
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
   window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
-
-  // ---------- art lab (index.html#artlab): try the new looks on real levels ----------
-  if (/artlab/.test(location.hash)) {
-    const KEY = 'paintRunner.artLab';
-    try { Object.assign(ART.opts, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* ignore */ }
-    const rows = [
-      ['color', 'Paint on paper', [['off', 'Today'], ['bloom', 'Watercolor'], ['sketch', 'Watercolor + sketch']]],
-      ['living', 'Background', [[false, 'Still'], [true, 'Living']]],
-      ['parallax', 'Depth', [[false, 'Flat'], [true, 'Parallax']]],
-    ];
-    const lab = document.createElement('div');
-    lab.id = 'artlab';
-    const draw = () => {
-      lab.innerHTML = `<button class="lab-head" data-lab="toggle">🎨 Art lab <span>${lab.classList.contains('min') ? '▸' : '▾'}</span></button>
-        <div class="lab-body">${rows.map(([k, label, choices]) => `<div class="lab-row"><span>${label}</span><div class="lab-seg">${choices.map(([v, l]) =>
-          `<button data-k="${k}" data-v="${v}" aria-pressed="${ART.opts[k] === v}">${l}</button>`).join('')}</div></div>`).join('')}
-          <div class="lab-row"><button data-lab="all">All new</button><button data-lab="none">All today</button><button data-lab="retry">↺ Retry level</button></div></div>`;
-    };
-    lab.addEventListener('click', (e) => {
-      const b = e.target.closest('button'); if (!b) return;
-      b.blur();
-      if (b.dataset.lab === 'toggle') lab.classList.toggle('min');
-      if (b.dataset.lab === 'all') Object.assign(ART.opts, { color: 'sketch', living: true, parallax: true });
-      if (b.dataset.lab === 'none') Object.assign(ART.opts, { color: 'off', living: false, parallax: false });
-      if (b.dataset.lab === 'retry' && game.world) startLevel(game.levelIdx);
-      if (b.dataset.k) ART.opts[b.dataset.k] = b.dataset.k === 'color' ? b.dataset.v : b.dataset.v === 'true';
-      try { localStorage.setItem(KEY, JSON.stringify(ART.opts)); } catch (err) { /* ignore */ }
-      draw();
-    });
-    ['pointerdown', 'touchstart', 'mousedown'].forEach((t) => lab.addEventListener(t, (e) => e.stopPropagation()));
-    draw();
-    document.body.appendChild(lab);
-  }
 
   // every visit reaches the stats dashboard; signed-out players play as anonymous guests
   if (online()) Cloud.trackVisits();

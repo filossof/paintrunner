@@ -360,7 +360,7 @@ const ART = (() => {
   }
 
   // ============================================================
-  //  The art lab (new looks, being tried out): see `opts`.
+  //  Looks that can be switched (`opts`), all on by default:
   //   color   - 'off': paint stays on the walls (today)
   //             'bloom': paint soaks into the paper around it like watercolor
   //             'sketch': ...and colors the pencil drawing it touches
@@ -369,7 +369,7 @@ const ART = (() => {
   // ============================================================
   // living backgrounds and parallax are the look for everyone (still, for players who ask for less motion)
   const calm = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const opts = { color: 'off', living: !calm, parallax: !calm };
+  const opts = { color: 'bloom', living: !calm, parallax: !calm };
   const layered = () => opts.color !== 'off' || opts.living || opts.parallax;
 
   // the sketch in layers, for living/parallax backgrounds (cached per level)
