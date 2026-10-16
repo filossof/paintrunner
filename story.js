@@ -181,7 +181,8 @@ const Story = (() => {
     // river banks and birds
     pencil(g, [[0, 520], [160, 492], [320, 488], [520, 505], [760, 528], [960, 490]], 0.4, 1.4, 41);
     for (let i = 0; i < 3; i++) {
-      const bx = ((t * 30 + i * 26) % 1100) - 80, by = 140 + (i % 2) * 12, f = Math.sin(t * 9 + i) * 4;
+      const bx = 60 + t * 30 + i * 26, by = 140 + (i % 2) * 12, f = Math.sin(t * 9 + i) * 4;
+      if (bx > SW + 20) continue;                         // flown away: gone for good
       pencil(g, [[bx - 7, by - f * 0.4], [bx - 3, by - 4 - f], [bx, by], [bx + 3, by - 4 - f], [bx + 7, by - f * 0.4]], 0.5, 1.4, 50 + i);
     }
   }
@@ -189,7 +190,7 @@ const Story = (() => {
   // ---------------- the panels ----------------
   const off = () => { const c = document.createElement('canvas'); c.width = SW; c.height = SH; return c; };
   let bufA, bufB;
-  const PANELS = [
+  const INTRO = [
     {
       text: 'Once upon a time, the world was full of color.',
       draw(g, t) {
@@ -240,7 +241,8 @@ const Story = (() => {
         }
         // the Washers march off with the colors - the only color left in the world
         RAINBOW.forEach((c, i) => {
-          const x = ((t * 46 + i * 120) % 1000) - 60, y = ground(x) + 30 + (i % 2) * 22;
+          const x = 60 + i * 120 + t * 46, y = ground(x) + 30 + (i % 2) * 22;
+          if (x > SW + 60) return;                         // marched off with the color: gone
           washer(g, x, y, 1.1, t + i, c);
         });
         eraser(g, 150, 205, 0.8, t, 'smug');
@@ -278,7 +280,7 @@ const Story = (() => {
         paper(g);
         const gy = (x) => 440 + Math.sin(x * 0.01) * 5;
         // the ground turns blue behind the running hero
-        const hx = 120 + ((t * 160) % 1100) - 60;
+        const run = ease(t / 3), hx = -40 + run * 640;          // runs in once, then waits, eager to go
         // a ragged watercolor stripe of blue along the ground, up to the hero
         g.beginPath(); g.moveTo(-10, gy(-10) + 2);
         for (let x = -10; x <= hx; x += 6) g.lineTo(x, gy(x) - 2 + Math.sin(x * 0.06) * 1.5);
@@ -290,8 +292,8 @@ const Story = (() => {
           g.fillStyle = rgba(C.blue, 0.45); g.beginPath(); g.ellipse(x, gy(x) + 20 + len / 2, 2.4, len / 2, 0, 0, Math.PI * 2); g.fill();
         }
         pencil(g, curve(gy, -10, 970), 0.6, 2, 81);
-        const hop = Math.abs(Math.sin(t * 10)) * 6;
-        hero(g, hx, gy(hx) - hop, { t, moving: 1, run: (t * 2.6) % 1, face: 1, squash: 1 });
+        const moving = run < 0.98, hop = moving ? Math.abs(Math.sin(t * 10)) * 6 : Math.abs(Math.sin(t * 4)) * 10;
+        hero(g, hx, gy(hx) - hop, { t, moving: moving ? 1 : 0, run: (t * 2.6) % 1, face: 1, squash: 1, air: hop > 3 });
         // the five colors waiting far away
         RAINBOW.forEach((c, i) => can(g, 560 + i * 70, 150 + Math.sin(t * 2 + i) * 6, 2.2, c));
         g.fillStyle = INK; g.font = '900 54px ui-rounded, "SF Pro Rounded", system-ui, sans-serif'; g.textAlign = 'center';
@@ -300,10 +302,114 @@ const Story = (() => {
     },
   ];
 
+  // ---------------- the ending (after level 45): a teaser for Chapter 2 ----------------
+  const shimmer = (t, k = 0) => `hsl(${(t * 140 + k * 60) % 360}, 90%, 56%)`;    // the color nobody has ever seen
+  // a swirling ink hole in the paper
+  function portal(g, x, y, r, t) {
+    for (let i = 5; i >= 0; i--) {
+      g.fillStyle = `rgba(28,28,31,${0.18 + i * 0.12})`;
+      g.beginPath(); g.ellipse(x, y, r * (1 - i * 0.14) , r * 1.25 * (1 - i * 0.14), 0, 0, Math.PI * 2); g.fill();
+    }
+    g.strokeStyle = 'rgba(240,236,224,0.35)'; g.lineWidth = 2;
+    for (let k = 0; k < 3; k++) {
+      g.beginPath();
+      for (let a = 0; a < Math.PI * 3; a += 0.2) {
+        const rr2 = r * (1 - a / (Math.PI * 3.2)), ang = a + t * 2.4 + k * 2.1;
+        const px = x + Math.cos(ang) * rr2, py = y + Math.sin(ang) * rr2 * 1.25;
+        a ? g.lineTo(px, py) : g.moveTo(px, py);
+      }
+      g.stroke();
+    }
+  }
+  const ENDING = [
+    {
+      text: 'You did it! All five colors are home, and the world is bright again.',
+      draw(g, t) {
+        landscape(g, t, true);
+        const hop = Math.abs(Math.sin(t * 4)) * 26;
+        hero(g, 470, ground(470) - hop + 2, { t, air: hop > 3, squash: hop > 3 ? 1.1 : 0.9, col: RAINBOW[Math.floor(t * 2) % 5] });
+        RAINBOW.forEach((c, i) => can(g, 300 + i * 90 + (i > 1 ? 70 : 0), ground(300 + i * 90) + 6, 2.2, c));
+        for (let i = 0; i < 40; i++) {                       // confetti of paint, falling once
+          const y = -20 + (t * (90 + hash(i, 1) * 80)) - hash(i, 2) * 300, x = hash(i, 3) * SW + Math.sin(t * 2 + i) * 14;
+          if (y < -10 || y > SH + 10) continue;
+          g.fillStyle = RAINBOW[i % 5]; g.beginPath(); g.ellipse(x, y, 4, 2.6, t * 3 + i, 0, Math.PI * 2); g.fill();
+        }
+      },
+    },
+    {
+      text: 'But the Eraser got away...',
+      draw(g, t) {
+        landscape(g, t, true);
+        portal(g, 850, 270, 46 + Math.min(1, t / 0.8) * 20, t);
+        // he scurries off toward the hole, getting smaller, and is gone
+        const q = Math.min(1, t / 4.5), k = q * q * (3 - 2 * q), x = 300 + k * 550, y = 300 - k * 30, sc = 0.9 - k * 0.75;
+        if (k < 0.97) {
+          eraser(g, x, y, sc, t, 'smug');
+          can(g, x + 60 * sc, y - 10 * sc, 2.6 * sc, shimmer(t));
+        }
+        hero(g, 170, ground(170) + 2, { t, face: 1, col: C.blue });
+      },
+    },
+    {
+      text: '...and he took a color nobody has ever seen.',
+      draw(g, t) {
+        paper(g);
+        g.fillStyle = 'rgba(28,28,31,0.88)'; g.fillRect(0, 0, SW, SH);
+        const glow = g.createRadialGradient(SW / 2, 300, 10, SW / 2, 300, 220);
+        glow.addColorStop(0, shimmer(t).replace('hsl', 'hsla').replace(')', ', 0.55)')); glow.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = glow; g.fillRect(0, 0, SW, SH);
+        can(g, SW / 2, 320 + Math.sin(t * 2) * 6, 7, shimmer(t));
+        for (let i = 0; i < 14; i++) {                       // sparkles
+          const a = i * 0.9 + t * 0.6, d = 130 + (i % 3) * 40, p = (t * 0.8 + i * 0.37) % 1;
+          g.fillStyle = shimmer(t, i); g.globalAlpha = Math.sin(p * Math.PI);
+          const x = SW / 2 + Math.cos(a) * d, y = 300 + Math.sin(a) * d * 0.6, r = 3 + p * 3;
+          g.beginPath(); g.moveTo(x, y - r * 2); g.lineTo(x + r * 0.6, y); g.lineTo(x, y + r * 2); g.lineTo(x - r * 0.6, y); g.closePath(); g.fill();
+        }
+        g.globalAlpha = 1;
+        g.fillStyle = 'rgba(241,236,224,0.85)'; g.font = '900 46px ui-rounded, system-ui, sans-serif'; g.textAlign = 'center';
+        g.fillText('?', SW / 2 - 150, 230 + Math.sin(t * 3) * 8); g.fillText('?', SW / 2 + 160, 260 + Math.sin(t * 3 + 2) * 8);
+      },
+    },
+    {
+      text: 'Get ready for Chapter 2: the Eraser\'s Kingdom. New worlds and new paint, coming very soon!',
+      final: true,
+      draw(g, t) {
+        paper(g);
+        // a land far away, still being drawn: a gray castle on a cliff, snowy peaks, floating islands, a clock tower
+        const draw = Math.min(1, t / 1.6), cut = (pts) => pts.slice(0, Math.max(2, Math.ceil(pts.length * draw)));
+        pencil(g, cut([[0, 430], [120, 420], [240, 436], [330, 404], [380, 300], [420, 296], [440, 430], [960, 430]]), 0.6, 2, 91);
+        pencil(g, cut([[440, 330], [500, 210], [540, 260], [590, 150], [660, 300], [690, 330]]), 0.45, 1.6, 92);
+        pencil(g, cut([[700, 330], [700, 210], [760, 210], [760, 150], [790, 120], [820, 150], [820, 210], [880, 210], [880, 330]]), 0.55, 1.8, 93);
+        g.strokeStyle = 'rgba(60,55,50,0.5)'; g.lineWidth = 1.6;
+        g.beginPath(); g.arc(790, 175, 13 * draw, 0, Math.PI * 2); g.stroke();
+        g.beginPath(); g.moveTo(790, 175); g.lineTo(790 + Math.cos(t * 3) * 9, 175 + Math.sin(t * 3) * 9); g.stroke();
+        for (const [x, y, w] of [[600, 80, 56], [900, 92, 44], [80, 120, 40]]) {
+          const b = Math.sin(t * 1.4 + x) * 5;
+          pencil(g, [[x - w, y + b], [x + w, y + b], [x + w * 0.5, y + 26 + b], [x - w * 0.4, y + 22 + b], [x - w, y + b]], 0.45 * draw, 1.5, x);
+        }
+        // the color nobody has seen, glowing in the castle window
+        g.fillStyle = shimmer(t); g.globalAlpha = 0.6 + 0.3 * Math.sin(t * 4); g.fillRect(782, 240, 16, 22); g.globalAlpha = 1;
+        hero(g, 402, 298, { t, face: 1, col: C.blue });
+        // COMING SOON stamp
+        const st = Math.max(0, Math.min(1, (t - 1.6) / 0.25));
+        if (st > 0) {
+          g.save(); g.translate(250, 170); g.rotate(-0.16); g.scale(2.2 - st * 1.2, 2.2 - st * 1.2); g.globalAlpha = st;
+          g.strokeStyle = C.red; g.lineWidth = 5; rr(g, -150, -40, 300, 80, 10); g.stroke();
+          g.lineWidth = 2; rr(g, -140, -31, 280, 62, 7); g.stroke();
+          g.fillStyle = C.red; g.font = '900 44px ui-rounded, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText('COMING SOON', 0, 3);
+          g.restore();
+        }
+      },
+    },
+  ];
+  const SCENES = { intro: INTRO, ending: ENDING };
+
   // ---------------- playing it ----------------
   let el = null;
-  function play(onDone = () => { }) {
+  function play(which = 'intro', onDone = () => { }) {
     if (el) return;
+    const PANELS = SCENES[which] || INTRO;
     el = document.createElement('div');
     el.id = 'story';
     el.innerHTML = `<canvas aria-hidden="true"></canvas>

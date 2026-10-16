@@ -983,7 +983,11 @@
       if (tapped('Enter', 'Space') || mouse.down) {
         mouse.down = false;
         if (game.levelIdx + 1 < LEVELS.length) play(game.levelIdx + 1);
-        else game.mode = 'end';
+        else {
+          game.mode = 'end';
+          // the first time through the last level: the Chapter 2 teaser
+          if (typeof Story !== 'undefined' && !store.get('seenEnding', false)) { store.set('seenEnding', true); keys.clear(); Story.play('ending'); }
+        }
       }
       if (tapped('KeyR')) play(game.levelIdx);
       if (tapped('Escape')) { game.mode = 'title'; game.menuIdx = game.levelIdx; } // back to the level you just finished
@@ -1785,8 +1789,10 @@
   window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
 
   // Story preview: index.html#story plays the opening comic once the splash is gone
-  if (/story/.test(location.hash)) {
-    const wait = setInterval(() => { if (typeof Story !== 'undefined' && !document.getElementById('splash')) { clearInterval(wait); Story.play(); } }, 200);
+  // (and #ending plays the Chapter 2 teaser shown after level 45)
+  const storyHash = /ending/.test(location.hash) ? 'ending' : /story/.test(location.hash) ? 'intro' : null;
+  if (storyHash) {
+    const wait = setInterval(() => { if (typeof Story !== 'undefined' && !document.getElementById('splash')) { clearInterval(wait); Story.play(storyHash); } }, 200);
   }
 
   // every visit reaches the stats dashboard; signed-out players play as anonymous guests
