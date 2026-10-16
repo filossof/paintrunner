@@ -46,8 +46,14 @@ const ART = (() => {
   }
 
   // ---------------- pencil sketches behind the levels ----------------
-  function sketchWorld(g, theme, rnd) {
-    g.lineCap = 'round'; g.lineJoin = 'round';
+  // Draws a world's sketch. `to(layer)` picks where each part goes: 'far' (hills, distant shapes),
+  // 'mid' (closer shapes) or 'anim' (clouds, birds, windmill blades, smoke, stars: things that can
+  // move). Anything sent to 'anim' is also reported to `anim(item)` so it can be drawn alive.
+  // With a single target (the classic still paper) everything lands on the same canvas.
+  function sketchWorld(to, theme, rnd, anim = () => { }) {
+    let g = to('far');
+    const use = (layer) => { g = to(layer); g.lineCap = 'round'; g.lineJoin = 'round'; };
+    use('far');
     const pencil = (a, w = 1.1) => { g.strokeStyle = `rgba(70,64,58,${a})`; g.lineWidth = w; };
     const wob = (pts, a, n = 2) => {
       for (let k = 0; k < n; k++) {
@@ -61,29 +67,35 @@ const ART = (() => {
       wob(pts, a);
       for (let x = 0; x < W; x += 8) { const y = base - Math.sin(x * f1 + ph) * amp - Math.sin(x * f2 + ph * 2) * amp * 0.3; pencil(a * 0.35); g.beginPath(); g.moveTo(x, y + 4); g.lineTo(x - 9, y + 20); g.stroke(); }
     };
-    const cloud = (cx, cy, s) => { pencil(0.14); g.beginPath(); g.arc(cx, cy, 14 * s, Math.PI, 0); g.arc(cx + 22 * s, cy - 4 * s, 18 * s, Math.PI, 0); g.arc(cx + 46 * s, cy, 12 * s, Math.PI, 0); g.stroke(); };
-    const birds = (bx, by) => { for (let i = 0; i < 3; i++) { const x = bx + i * 20, y = by + (i % 2) * 10; pencil(0.2); g.beginPath(); g.moveTo(x - 6, y); g.quadraticCurveTo(x - 3, y - 4, x, y); g.quadraticCurveTo(x + 3, y - 4, x + 6, y); g.stroke(); } };
+    const cloud = (cx, cy, s) => { use('anim'); anim({ kind: 'cloud', x: cx, y: cy, s }); cloudShape(g, cx, cy, s); };
+    const birds = (bx, by) => { use('anim'); anim({ kind: 'birds', x: bx, y: by }); birdShapes(g, bx, by, null); };
     const ph = rnd() * 6;
 
     if (theme === 0) {                                       // blue: rolling hills, a windmill, clouds
-      ridge(300, 60, 0.006, 0.017, ph, 0.2); ridge(370, 40, 0.009, 0.021, ph + 2, 0.13);
+      ridge(300, 60, 0.006, 0.017, ph, 0.2); use('mid'); ridge(370, 40, 0.009, 0.021, ph + 2, 0.13);
       const mx = 120 + rnd() * 700, my = 200;
       wob([[mx - 14, my + 95], [mx - 8, my], [mx + 8, my], [mx + 14, my + 95]], 0.18);
+      use('anim'); anim({ kind: 'windmill', x: mx, y: my });
       for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + 0.4; wob([[mx, my], [mx + Math.cos(a) * 48, my + Math.sin(a) * 48]], 0.18, 1); }
       for (let i = 0; i < 3; i++) cloud(120 + i * 300 + rnd() * 80, 60 + rnd() * 40, 0.9 + rnd() * 0.4);
       birds(400 + rnd() * 200, 110);
     } else if (theme === 1) {                                // red: volcanoes with smoke
+      use('mid');
       for (let i = 0; i < 2; i++) {
         const vx = 200 + i * 480 + rnd() * 80, vy = 150 + rnd() * 40, base = 400;
+        use(i ? 'mid' : 'far');
         wob([[vx - 190, base], [vx - 30, vy], [vx + 30, vy], [vx + 190, base]], 0.2);
         for (let k = 0; k < 6; k++) { pencil(0.08); g.beginPath(); g.moveTo(vx - 30 + k * 10, vy + 4); g.lineTo(vx - 80 + k * 30, base - 10); g.stroke(); }
+        use('anim'); anim({ kind: 'smoke', x: vx, y: vy });
         for (let k = 0; k < 4; k++) { pencil(0.12); g.beginPath(); g.arc(vx + Math.sin(k) * 14, vy - 30 - k * 26, 14 + k * 5, 0, Math.PI * 2); g.stroke(); }
       }
-      ridge(420, 25, 0.01, 0.03, ph, 0.12);
+      use('mid'); ridge(420, 25, 0.01, 0.03, ph, 0.12);
     } else if (theme === 2) {                                // green: forest of pines and round trees
       ridge(360, 30, 0.007, 0.02, ph, 0.14);
+      use('mid'); anim({ kind: 'leaves' });
       for (let i = 0; i < 16; i++) {
         const tx = 20 + i * 62 + rnd() * 30, ty = 330 - rnd() * 60, h = 70 + rnd() * 70;
+        use(i % 2 ? 'mid' : 'far');
         if (rnd() < 0.6) {
           wob([[tx, ty - h], [tx - h * 0.28, ty], [tx + h * 0.28, ty], [tx, ty - h]], 0.17, 1);
           for (let k = 1; k < 4; k++) wob([[tx - h * 0.07 * k, ty - h + h * 0.25 * k], [tx + h * 0.07 * k, ty - h + h * 0.25 * k]], 0.1, 1);
@@ -96,27 +108,50 @@ const ART = (() => {
     } else if (theme === 3) {                                // yellow: a sketched city skyline
       for (let i = 0; i < 14; i++) {
         const bx = i * 72 + rnd() * 20, bw = 40 + rnd() * 30, bh = 90 + rnd() * 200, by = 420 - bh;
+        use(bh > 190 ? 'far' : 'mid');
         wob([[bx, 420], [bx, by], [bx + bw, by], [bx + bw, 420]], 0.16, 1);
         for (let y = by + 12; y < 410; y += 22) for (let x = bx + 8; x < bx + bw - 10; x += 14) { pencil(0.09); g.strokeRect(x, y, 6, 9); }
         if (rnd() < 0.3) wob([[bx + bw / 2, by], [bx + bw / 2, by - 30]], 0.15, 1);
       }
       for (let i = 0; i < 2; i++) cloud(200 + i * 420, 70, 1);
+      use('anim'); anim({ kind: 'windows' });
     } else if (theme === 4) {                                // purple: night sky, moon, stars and a castle
       pencil(0.2); g.beginPath(); g.arc(780, 100, 40, 0, Math.PI * 2); g.stroke();
       pencil(0.08); g.beginPath(); g.arc(795, 92, 34, 0, Math.PI * 2); g.stroke();
       for (let i = 0; i < 30; i++) {
         const sx = rnd() * W, sy = rnd() * 260, r = 2 + rnd() * 3;
+        use('anim'); anim({ kind: 'star', x: sx, y: sy, r, ph: hash(i, 4) * 6 });
         pencil(0.18); g.beginPath(); g.moveTo(sx - r, sy); g.lineTo(sx + r, sy); g.moveTo(sx, sy - r); g.lineTo(sx, sy + r); g.stroke();
       }
+      use('mid');
       const cx = 260 + rnd() * 200, cy = 220;
       wob([[cx, 420], [cx, cy], [cx + 200, cy], [cx + 200, 420]], 0.16, 1);
       for (const tx of [cx - 20, cx + 180]) { wob([[tx, 420], [tx, cy - 60], [tx + 40, cy - 60], [tx + 40, 420]], 0.16, 1); wob([[tx - 6, cy - 60], [tx + 20, cy - 110], [tx + 46, cy - 60]], 0.16, 1); }
       for (let x = cx; x < cx + 200; x += 20) { pencil(0.14); g.strokeRect(x, cy - 12, 10, 12); }
+      use('anim'); anim({ kind: 'bats', x: cx + 100, y: cy - 80 });
     } else {                                                  // finale: a bit of everything
       ridge(330, 50, 0.006, 0.018, ph, 0.16);
+      use('mid');
       const vx = 700; wob([[vx - 150, 380], [vx - 20, 170], [vx + 20, 170], [vx + 150, 380]], 0.16);
+      use('anim'); anim({ kind: 'smoke', x: vx, y: 170 });
+      use('mid');
       for (let i = 0; i < 6; i++) { const bx = 60 + i * 50, bh = 80 + rnd() * 120; wob([[bx, 380], [bx, 380 - bh], [bx + 36, 380 - bh], [bx + 36, 380]], 0.12, 1); }
-      for (let i = 0; i < 12; i++) { const sx = rnd() * W, sy = rnd() * 140, r = 2 + rnd() * 2; pencil(0.16); g.beginPath(); g.moveTo(sx - r, sy); g.lineTo(sx + r, sy); g.moveTo(sx, sy - r); g.lineTo(sx, sy + r); g.stroke(); }
+      for (let i = 0; i < 12; i++) {
+        const sx = rnd() * W, sy = rnd() * 140, r = 2 + rnd() * 2;
+        use('anim'); anim({ kind: 'star', x: sx, y: sy, r, ph: hash(i, 5) * 6 });
+        pencil(0.16); g.beginPath(); g.moveTo(sx - r, sy); g.lineTo(sx + r, sy); g.moveTo(sx, sy - r); g.lineTo(sx, sy + r); g.stroke();
+      }
+      use('anim'); anim({ kind: 'embers' });
+    }
+  }
+  const pencilOf = (g, a, w = 1.1) => { g.strokeStyle = `rgba(70,64,58,${a})`; g.lineWidth = w; };
+  function cloudShape(g, cx, cy, s) {
+    pencilOf(g, 0.14); g.beginPath(); g.arc(cx, cy, 14 * s, Math.PI, 0); g.arc(cx + 22 * s, cy - 4 * s, 18 * s, Math.PI, 0); g.arc(cx + 46 * s, cy, 12 * s, Math.PI, 0); g.stroke();
+  }
+  function birdShapes(g, bx, by, flap) {
+    for (let i = 0; i < 3; i++) {
+      const x = bx + i * 20, y = by + (i % 2) * 10, f = flap === null ? 0 : Math.sin(flap + i * 1.7) * 3;
+      pencilOf(g, 0.2); g.beginPath(); g.moveTo(x - 6, y - f * 0.4); g.quadraticCurveTo(x - 3, y - 4 - f, x, y); g.quadraticCurveTo(x + 3, y - 4 - f, x + 6, y - f * 0.4); g.stroke();
     }
   }
 
@@ -128,7 +163,7 @@ const ART = (() => {
     const c = off(W, H), g = c.getContext('2d');
     g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
     const seed = [...levelName].reduce((n, ch) => n * 31 + ch.charCodeAt(0), 7) >>> 0;
-    sketchWorld(g, Math.min(5, Math.floor(levelIdx / 8)), seeded(seed));
+    sketchWorld(() => g, Math.min(5, Math.floor(levelIdx / 8)), seeded(seed));
     g.fillStyle = g.createPattern(grain, 'repeat'); g.fillRect(0, 0, W, H);
     papers.set(levelName, c);
     return c;
@@ -324,5 +359,205 @@ const ART = (() => {
     ctx.drawImage(vig, 0, 0);
   }
 
-  return { inkPattern, paper, plainPaper, inkLine, drawTiles, drawLava, makeStain, drawStains, shadow, vignette };
+  // ============================================================
+  //  The art lab (new looks, being tried out): see `opts`.
+  //   color   - 'off': paint stays on the walls (today)
+  //             'bloom': paint soaks into the paper around it like watercolor
+  //             'sketch': ...and colors the pencil drawing it touches
+  //   living  - clouds drift, birds fly, the windmill turns, smoke rises, stars twinkle
+  //   parallax- the drawing behind the level shifts a little as you move: depth
+  //   flood   - finishing a level washes the whole page in your colors
+  // ============================================================
+  const opts = { color: 'off', living: false, parallax: false, flood: false };
+  const layered = () => opts.color !== 'off' || opts.living || opts.parallax || opts.flood;
+
+  // the sketch in layers, for living/parallax backgrounds (cached per level)
+  const M = 28;                                   // spare margin around each layer, for the parallax shift
+  const scenes = new Map();
+  function scene(levelName, levelIdx) {
+    if (scenes.has(levelName)) return scenes.get(levelName);
+    textures();
+    const mk = () => { const c = off(W + 2 * M, H + 2 * M), g = c.getContext('2d'); g.translate(M, M); return { c, g }; };
+    const far = mk(), mid = mk(), still = mk();
+    const base = off(W, H), bg = base.getContext('2d');
+    bg.fillStyle = PAPER; bg.fillRect(0, 0, W, H);
+    const seed = [...levelName].reduce((n, ch) => n * 31 + ch.charCodeAt(0), 7) >>> 0;
+    const anims = [];
+    const theme = Math.min(5, Math.floor(levelIdx / 8));
+    sketchWorld((layer) => (layer === 'far' ? far.g : layer === 'mid' ? mid.g : still.g), theme, seeded(seed), (it) => anims.push(it));
+    const grainPat = bg.createPattern(grain, 'repeat');
+    const sc = { base, far: far.c, mid: mid.c, still: still.c, anims, theme, grainPat };
+    scenes.set(levelName, sc);
+    return sc;
+  }
+
+  // where the player is, for parallax (eased so the background glides)
+  const cam = { x: null, y: null, tx: 0, ty: 0 };
+  function setCamera(x, y) { cam.tx = x; cam.ty = y; if (cam.x === null) { cam.x = x; cam.y = y; } }
+
+  // things that move in the drawing (pencil style)
+  function drawAnims(g, sc, t, dx, dy) {
+    g.save(); g.translate(dx, dy); g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const it of sc.anims) {
+      if (it.kind === 'cloud') {
+        const span = W + 220, x = ((it.x + t * (7 + it.s * 4) + 110) % span + span) % span - 110;
+        cloudShape(g, x, it.y + Math.sin(t * 0.3 + it.x) * 2, it.s);
+      } else if (it.kind === 'birds') {
+        const span = W + 300, x = ((it.x + t * 22) % span + span) % span - 150;
+        birdShapes(g, x, it.y + Math.sin(t * 0.8) * 8, t * 9);
+      } else if (it.kind === 'windmill') {
+        for (let k = 0; k < 4; k++) {
+          const a = k * Math.PI / 2 + 0.4 + t * 0.5;
+          pencilOf(g, 0.18); g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(it.x + Math.cos(a) * 48, it.y + Math.sin(a) * 48); g.stroke();
+          pencilOf(g, 0.1); g.beginPath(); g.moveTo(it.x + Math.cos(a) * 14, it.y + Math.sin(a) * 14);
+          g.lineTo(it.x + Math.cos(a) * 46 + Math.cos(a + 1.57) * 8, it.y + Math.sin(a) * 46 + Math.sin(a + 1.57) * 8); g.stroke();
+        }
+        pencilOf(g, 0.2); g.beginPath(); g.arc(it.x, it.y, 3, 0, Math.PI * 2); g.stroke();
+      } else if (it.kind === 'smoke') {
+        for (let k = 0; k < 5; k++) {
+          const p = ((t * 0.12 + k / 5) % 1), y = it.y - 18 - p * 130, x = it.x + Math.sin(p * 5 + k) * 10 + p * 24;
+          pencilOf(g, 0.16 * (1 - p)); g.beginPath(); g.arc(x, y, 10 + p * 22, 0, Math.PI * 2); g.stroke();
+        }
+      } else if (it.kind === 'star') {
+        const a = 0.08 + 0.16 * (0.5 + 0.5 * Math.sin(t * 2.2 + it.ph)), r = it.r * (0.8 + 0.3 * Math.sin(t * 2.2 + it.ph));
+        pencilOf(g, a); g.beginPath(); g.moveTo(it.x - r, it.y); g.lineTo(it.x + r, it.y); g.moveTo(it.x, it.y - r); g.lineTo(it.x, it.y + r); g.stroke();
+      } else if (it.kind === 'leaves') {
+        for (let k = 0; k < 7; k++) {
+          const p = (t * 0.05 + hash(k, 3)) % 1, x = hash(k, 9) * W + Math.sin(t * 1.3 + k) * 18, y = -10 + p * (H * 0.75);
+          g.save(); g.translate(x, y); g.rotate(Math.sin(t * 2 + k) * 0.9);
+          pencilOf(g, 0.2 * Math.min(1, (1 - p) * 4)); g.beginPath(); g.ellipse(0, 0, 5, 2.4, 0, 0, Math.PI * 2); g.moveTo(-5, 0); g.lineTo(5, 0); g.stroke();
+          g.restore();
+        }
+      } else if (it.kind === 'bats') {
+        for (let k = 0; k < 3; k++) {
+          const a = t * 0.7 + k * 2.1, x = it.x + Math.cos(a) * (60 + k * 20), y = it.y + Math.sin(a * 1.3) * 26, f = Math.sin(t * 12 + k) * 4;
+          pencilOf(g, 0.22); g.beginPath(); g.moveTo(x - 8, y - f); g.quadraticCurveTo(x - 4, y + 2, x, y); g.quadraticCurveTo(x + 4, y + 2, x + 8, y - f); g.stroke();
+        }
+      } else if (it.kind === 'embers') {
+        for (let k = 0; k < 10; k++) {
+          const p = (t * 0.07 + hash(k, 21)) % 1, x = hash(k, 22) * W + Math.sin(t + k) * 12, y = H * 0.8 - p * H * 0.75;
+          g.fillStyle = `rgba(255,${120 + k * 10},40,${0.35 * (1 - p)})`; g.beginPath(); g.arc(x, y, 1.6, 0, Math.PI * 2); g.fill();
+        }
+      } else if (it.kind === 'windows') {
+        // a few city windows light up and go dark
+        for (let k = 0; k < 8; k++) {
+          if (Math.sin(t * 0.4 + k * 2.3) < 0.3) continue;
+          const x = 30 + hash(k, 41) * (W - 60), y = 250 + hash(k, 42) * 140;
+          g.fillStyle = 'rgba(255,201,60,0.18)'; g.fillRect(x, y, 6, 9);
+        }
+      }
+    }
+    g.restore();
+  }
+
+  // ---- color soaking into the paper ----
+  // (canvases made on first use: W and H come from world.js, which loads after this file)
+  let bleed, bleedG, live, liveG, tint, tintG, mask, maskG;
+  function buffers() {
+    if (bleed) return;
+    const mk = () => { const c = off(W, H); return [c, c.getContext('2d')]; };
+    [bleed, bleedG] = mk(); [live, liveG] = mk(); [tint, tintG] = mk(); [mask, maskG] = mk();
+  }
+  let blooms = [];
+  const rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  // one watercolor bloom: a couple of ragged, overlapping washes with a darker rim where the
+  // water dried, and a few granules of pigment
+  function blobPath(g, x, y, r, seed) {
+    const n = 28, p1 = hash(seed, 1) * 6, p2 = hash(seed, 2) * 6, p3 = hash(seed, 3) * 6;
+    g.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const k = 1 + 0.16 * Math.sin(a * 3 + p1) + 0.09 * Math.sin(a * 5 + p2) + 0.05 * Math.sin(a * 9 + p3);
+      const px = x + Math.cos(a) * r * k, py = y + Math.sin(a) * r * k * 0.86;
+      i ? g.lineTo(px, py) : g.moveTo(px, py);
+    }
+    g.closePath();
+  }
+  function paintBloom(g, b, k) {
+    const [R, G, B] = rgb(b.col), e = 1 - Math.pow(1 - Math.min(1, k), 3), rad = b.r * e, s = b.strength;
+    if (rad < 1) return;
+    for (let i = 0; i < 3; i++) {
+      const a = b.seed * 7 + i * 2.4, d = rad * 0.28 * hash(b.seed + i, 3);
+      const x = b.x + Math.cos(a) * d, y = b.y + Math.sin(a) * d * 0.8, r = rad * (0.62 + 0.38 * hash(i, b.seed));
+      const gr = g.createRadialGradient(x, y, r * 0.1, x, y, r * 1.1);
+      gr.addColorStop(0, `rgba(${R},${G},${B},${0.07 * s})`);
+      gr.addColorStop(0.75, `rgba(${R},${G},${B},${0.12 * s})`);
+      gr.addColorStop(1, `rgba(${R},${G},${B},${0.2 * s})`);
+      g.fillStyle = gr; blobPath(g, x, y, r, b.seed * 3 + i); g.fill();
+      g.strokeStyle = `rgba(${R},${G},${B},${0.16 * s})`; g.lineWidth = 1.6; g.stroke();   // the dried rim
+    }
+    if (k >= 1) {                                    // granulation, once it has settled
+      g.fillStyle = `rgba(${R},${G},${B},${0.22 * s})`;
+      for (let i = 0; i < 26; i++) {
+        const a = hash(b.seed, i) * Math.PI * 2, d = Math.sqrt(hash(i, b.seed)) * rad * 0.9;
+        g.beginPath(); g.arc(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d * 0.86, 0.6 + hash(i, i + b.seed) * 1.1, 0, Math.PI * 2); g.fill();
+      }
+    }
+  }
+  function bloom(x, y, col, size = 1) {
+    if (opts.color === 'off' && !opts.flood) return;
+    if (opts.color === 'off' && size < 2) return;
+    blooms.push({ x, y, col, r: (46 + Math.random() * 20) * size, seed: Math.floor(Math.random() * 1000), born: performance.now(), dur: 900 + size * 500, strength: size > 1 ? 0.9 : 1 });
+  }
+  // finishing a level: big blooms of your colors roll out from the flag across the page
+  function flood(x, y, cols) {
+    if (!opts.flood || !cols.length) return;
+    const now = performance.now();
+    for (let i = 0; i < 30; i++) {
+      const a = (i / 30) * Math.PI * 2 * 3.1 + Math.random() * 0.4, d = 40 + (i / 30) * 900 + Math.random() * 60;
+      blooms.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.6, col: cols[i % cols.length], r: 120 + Math.random() * 80,
+        seed: Math.floor(Math.random() * 1000), born: now + d * 0.9, dur: 900, strength: 0.85 });
+    }
+  }
+  function resetLevel() { if (bleed) bleedG.clearRect(0, 0, W, H); blooms = []; }
+  // the bleed layer this frame: settled blooms, plus the ones still spreading
+  function bleedNow() {
+    buffers();
+    const now = performance.now();
+    blooms = blooms.filter((b) => {
+      const k = (now - b.born) / b.dur;
+      if (k >= 1) { paintBloom(bleedG, b, 1); return false; }
+      return true;
+    });
+    if (!blooms.length) return bleed;
+    liveG.clearRect(0, 0, W, H); liveG.drawImage(bleed, 0, 0);
+    for (const b of blooms) { const k = (now - b.born) / b.dur; if (k > 0) paintBloom(liveG, b, k); }
+    return live;
+  }
+
+  // the whole background for the lab looks: paper, sketch (moving or still), soaked-in color, grain
+  function drawScene(ctx, levelName, levelIdx, t) {
+    const sc = scene(levelName, levelIdx);
+    cam.x += (cam.tx - cam.x) * 0.06; cam.y += (cam.ty - cam.y) * 0.06;
+    const px = opts.parallax ? (W / 2 - cam.x) : 0, py = opts.parallax ? (H / 2 - cam.y) : 0;
+    const far = [px * 0.022, py * 0.012], mid = [px * 0.05, py * 0.025];
+    ctx.drawImage(sc.base, 0, 0);
+    const tl = opts.living ? t : 0;
+    const drawSketch = (g) => {
+      g.drawImage(sc.far, -M + far[0], -M + far[1]);
+      g.drawImage(sc.mid, -M + mid[0], -M + mid[1]);
+      if (opts.living) drawAnims(g, sc, tl, mid[0] * 0.6, mid[1] * 0.6);
+      else g.drawImage(sc.still, -M + mid[0] * 0.6, -M + mid[1] * 0.6);
+    };
+    drawSketch(ctx);
+    if (opts.color !== 'off' || opts.flood) {
+      const b = bleedNow();
+      ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(b, 0, 0); ctx.restore();
+      if (opts.color === 'sketch') {
+        // the pencil lines take the color of the paint around them
+        // (the faint pencil, drawn a few times over, makes a mask strong enough to carry color)
+        maskG.clearRect(0, 0, W, H);
+        for (let i = 0; i < 4; i++) drawSketch(maskG);
+        tintG.globalCompositeOperation = 'source-over'; tintG.clearRect(0, 0, W, H);
+        for (let i = 0; i < 4; i++) tintG.drawImage(b, 0, 0);
+        tintG.globalCompositeOperation = 'destination-in';
+        tintG.drawImage(mask, 0, 0);
+        ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 1; ctx.drawImage(tint, 0, 0); ctx.restore();
+      }
+    }
+    ctx.fillStyle = sc.grainPat; ctx.fillRect(0, 0, W, H);
+  }
+
+  return { inkPattern, paper, plainPaper, inkLine, drawTiles, drawLava, makeStain, drawStains, shadow, vignette,
+    opts, layered, drawScene, setCamera, bloom, flood, resetLevel };
 })();

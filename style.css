@@ -558,3 +558,22 @@ body.touch .set-sec + .set-sec { margin-top: 10px; padding-top: 10px; }
   .ghost-intro p { font-size: 13.5px; margin-bottom: 8px; }
   .gi-actions { grid-auto-flow: column; justify-content: center; }
 }
+
+/* ---------- art lab (index.html#artlab) ---------- */
+#artlab {
+  position: fixed; right: 10px; top: 64px; z-index: 60; width: 300px; max-width: calc(100vw - 20px);
+  background: rgba(255,255,255,0.94); color: var(--ink); border: 2px solid var(--ink); border-radius: 14px;
+  box-shadow: 4px 4px 0 var(--ink); font: 600 12.5px var(--font); overflow: hidden;
+}
+#artlab .lab-head { all: unset; display: flex; justify-content: space-between; width: 100%; box-sizing: border-box; padding: 7px 12px; font: 800 14px var(--font); cursor: pointer; }
+#artlab.min .lab-body { display: none; }
+#artlab .lab-body { padding: 0 10px 10px; display: grid; gap: 7px; }
+#artlab .lab-row { display: grid; gap: 3px; }
+#artlab .lab-row:last-child { grid-auto-flow: column; gap: 6px; margin-top: 2px; }
+#artlab .lab-seg { display: flex; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; }
+#artlab .lab-seg button { flex: 1; border: 0; background: #fff; color: var(--ink); font: 700 12px var(--font); padding: 5px 4px; cursor: pointer; }
+#artlab .lab-seg button + button { border-left: 2px solid var(--ink); }
+#artlab .lab-seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+#artlab .lab-row:last-child button { border: 2px solid var(--ink); background: #fff6d6; border-radius: 999px; font: 800 12px var(--font); padding: 5px 6px; cursor: pointer; }
+body.touch #artlab { top: 8px; right: 50%; transform: translateX(50%); width: 280px; font-size: 11.5px; }
+body.touch #artlab .lab-seg button { padding: 4px 3px; font-size: 11px; }
