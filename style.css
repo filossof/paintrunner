@@ -558,3 +558,30 @@ body.touch .set-sec + .set-sec { margin-top: 10px; padding-top: 10px; }
   .ghost-intro p { font-size: 13.5px; margin-bottom: 8px; }
   .gi-actions { grid-auto-flow: column; justify-content: center; }
 }
+
+/* ---------- story: the opening comic ---------- */
+#story {
+  position: fixed; inset: 0; z-index: 110; background: #0b0b0d; display: grid; place-items: center;
+  touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; transition: opacity 0.45s;
+}
+#story.st-out { opacity: 0; pointer-events: none; }
+#story canvas { width: min(100vw, calc(100dvh * 960 / 544)); aspect-ratio: 960 / 544; display: block; }
+#story .st-caption {
+  position: absolute; left: 50%; top: max(12px, calc(50dvh - min(100vw, calc(100dvh * 960 / 544)) * 544 / 960 / 2 + 14px)); transform: translateX(-50%) rotate(-0.6deg);
+  margin: 0; max-width: min(720px, 86vw); min-height: 1.3em; padding: 10px 18px; background: #fffdf7; color: #1c1c1f;
+  border: 3px solid #1c1c1f; border-radius: 6px; box-shadow: 4px 4px 0 #1c1c1f;
+  font: 800 clamp(13px, 1.9vw, 24px) var(--font); text-align: center; line-height: 1.3;
+}
+#story .st-caption:empty { visibility: hidden; }
+#story .st-skip {
+  position: absolute; top: 12px; right: 12px; font: 800 14px var(--font); color: #1c1c1f; background: rgba(255,255,255,0.85);
+  border: 2px solid #1c1c1f; border-radius: 999px; padding: 6px 14px; cursor: pointer;
+}
+#story .st-next { position: absolute; bottom: 16px; right: 18px; font: 800 14px var(--font); color: #1c1c1f; background: rgba(255,255,255,0.85);
+  border-radius: 999px; padding: 4px 12px; opacity: 0; transition: opacity 0.3s; }
+#story .st-next.on { opacity: 1; animation: st-pulse 1.4s ease-in-out infinite; }
+@keyframes st-pulse { 50% { transform: translateX(4px); } }
+#story .st-dots { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+#story .st-dots i { width: 9px; height: 9px; border-radius: 50%; border: 2px solid #1c1c1f; background: rgba(255,255,255,0.7); }
+#story .st-dots i.on { background: #1c1c1f; }
+@media (prefers-reduced-motion: reduce) { #story .st-next.on { animation: none; } }

@@ -1784,6 +1784,11 @@
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
   window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
 
+  // Story preview: index.html#story plays the opening comic once the splash is gone
+  if (/story/.test(location.hash)) {
+    const wait = setInterval(() => { if (typeof Story !== 'undefined' && !document.getElementById('splash')) { clearInterval(wait); Story.play(); } }, 200);
+  }
+
   // every visit reaches the stats dashboard; signed-out players play as anonymous guests
   if (online()) Cloud.trackVisits();
 
