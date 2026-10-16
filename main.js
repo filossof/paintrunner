@@ -625,10 +625,11 @@
   const online = () => typeof Cloud !== 'undefined' && Cloud.available;
 
   function postResult(result, completed) {
-    if (!online() || !Cloud.user) { result.cloud = online() ? 'signin' : null; return; }
+    if (!online()) { result.cloud = null; return; }
     const lv = LEVELS[game.levelIdx];
     const run = { level: lv.name, levelIdx: game.levelIdx, completed, time: result.time, stars: result.stars, throws: result.throws, deaths: result.deaths, played: game.world ? game.world.playFrames / 60 : result.time };
-    Cloud.logRun(run).catch((e) => console.warn('logRun', e.code || e));
+    Cloud.logRun(run).catch((e) => console.warn('logRun', e.code || e));   // guests too, for the stats
+    if (!Cloud.user) { result.cloud = 'signin'; return; }
     if (!completed) return;
     result.cloud = 'saving';
     // keep the star ranking up to date too (total stars, levels cleared)
@@ -651,7 +652,7 @@
   // ---- play time (for the owner's stats): time in a level with the tab visible ----
   const playLog = { seconds: 0, levels: new Set(), lastLevel: '' };
   function savePlayTime() {
-    if (!online() || !Cloud.user) return;
+    if (!online()) return;
     Cloud.saveSession({ seconds: playLog.seconds, levels: playLog.levels.size, lastLevel: playLog.lastLevel });
   }
   setInterval(savePlayTime, 30000);
@@ -1563,6 +1564,9 @@
   // Handy for poking at the game from the browser console.
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
   window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
+
+  // every visit reaches the stats dashboard; signed-out players play as anonymous guests
+  if (online()) Cloud.trackVisits();
 
   if (typeof UI !== 'undefined') {
     UI.init({

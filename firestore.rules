@@ -3,7 +3,13 @@ rules_version = '2';
 // Firestore Database -> Rules -> paste this whole file -> Publish.
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Anyone with a Firebase account, guests (anonymous) included: enough for the stats logs.
     function signedIn() { return request.auth != null; }
+    // Signed in with Google (not a guest): needed for profiles and leaderboards.
+    // (A guest who signed in with Google keeps their account; their token then carries an email.)
+    function member() {
+      return signedIn() && (request.auth.token.firebase.sign_in_provider != 'anonymous' || 'email' in request.auth.token);
+    }
     // The game owner, who can open the stats page.
     function isAdmin() {
       return signedIn() && request.auth.token.email == 'filossof@gmail.com' && request.auth.token.email_verified == true;
@@ -12,7 +18,7 @@ service cloud.firestore {
     // Public profiles + progress; the star ranking reads these, so anyone may read.
     match /pr_players/{uid} {
       allow read: if true;
-      allow create, update: if signedIn() && request.auth.uid == uid
+      allow create, update: if member() && request.auth.uid == uid
         && request.resource.data.name is string && request.resource.data.name.size() <= 60
         && request.resource.data.totalStars is int
         && request.resource.data.totalStars >= 0 && request.resource.data.totalStars <= 300;
@@ -21,14 +27,14 @@ service cloud.firestore {
     // Emails stay private: only the owner (stats page) can read them.
     match /pr_private/{uid} {
       allow read: if isAdmin();
-      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow create, update: if member() && request.auth.uid == uid;
     }
 
     // Leaderboards: one row per player per level. Public to read; each player writes only
     // their own row, with sane values.
     match /pr_levels/{level}/pr_scores/{uid} {
       allow read: if true;
-      allow create, update: if signedIn() && request.auth.uid == uid
+      allow create, update: if member() && request.auth.uid == uid
         && request.resource.data.uid == uid
         && request.resource.data.name is string && request.resource.data.name.size() <= 60
         && request.resource.data.bestTime is number && request.resource.data.bestTime >= 1
@@ -38,7 +44,7 @@ service cloud.firestore {
         && (!('fewestThrows' in request.resource.data) || (request.resource.data.fewestThrows is int && request.resource.data.fewestThrows >= 0));
     }
 
-    // Play sessions (how long people actually play), for the stats page.
+    // Play sessions (one per visit: how long people actually play), for the stats page. Guests too.
     match /pr_sessions/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid
         && request.resource.data.seconds is int && request.resource.data.seconds >= 0;
@@ -48,7 +54,7 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
-    // Every finished or abandoned attempt, for the stats page.
+    // Every finished or abandoned attempt, for the stats page. Guests too.
     match /pr_runs/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
       allow read: if isAdmin();

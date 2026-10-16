@@ -10,12 +10,19 @@
      pr_runs/{autoId}                      every finished or abandoned attempt (admin stats)
      pr_sessions/{id}                      one per visit: how long the player actually played (admin stats)
 
+   Guests (not signed in) get an anonymous Firebase account, so their runs and visits still
+   reach the stats dashboard. They count as signed out everywhere else (`user` is null): no
+   leaderboards, no profile. Signing in with Google links that guest account to Google, so it
+   keeps its history; if the Google account already exists, it simply signs in to that one.
+
    The game never depends on this: if Firebase can't be reached, or the rules
    haven't been published yet, everything keeps working locally.
    ============================================================ */
 
 const Cloud = (() => {
   let auth = null, db = null, user = null, available = false;
+  let account = null;   // whoever Firebase has signed in, guests included (user = Google accounts only)
+  let tracking = false; // the game turns this on (trackVisits); the stats page doesn't, so it never makes guests
   const listeners = new Set();
 
   try {
@@ -42,6 +49,9 @@ const Cloud = (() => {
   const track = (p) => { pending = Promise.all([pending, p.catch(() => { })]); return p; };
 
   const session = { id: null, uid: null, startedAt: 0, base: 0, saved: false };
+  let lastSeconds = 0;   // play time so far this visit, as last reported by the game
+  const guestName = (u) => `Guest ${u.uid.slice(0, 4)}`;
+  const nameOf = () => (user ? publicName(user) : guestName(account));
 
   const emit = () => listeners.forEach((fn) => { try { fn(user); } catch (e) { console.error(e); } });
 
@@ -52,17 +62,49 @@ const Cloud = (() => {
   // don't wait forever (slow network, blocked storage): after a few seconds, treat it as signed out
   setTimeout(() => { if (!isReady) { isReady = true; markReady(); emit(); } }, 4000);
   if (available) {
-    auth.getRedirectResult().catch(() => { });
-    auth.onAuthStateChanged((u) => {
-      user = u;
-      if (!isReady) { isReady = true; markReady(); }
-      if (u) {
-        db.collection('pr_private').doc(u.uid).set({
-          email: u.email || '', fullName: u.displayName || '', lastSeen: Date.now(),
-        }, { merge: true }).catch((e) => console.warn('pr_private', e.code || e));
-      }
-      emit();
+    auth.getRedirectResult().catch((e) => {
+      // a guest signed in with a Google account that already exists: switch to that account
+      if (e.code === 'auth/credential-already-in-use' && e.credential) auth.signInWithCredential(e.credential).catch(() => { });
     });
+    auth.onAuthStateChanged((u) => {
+      setAccount(u);
+      if (!isReady) { isReady = true; markReady(); }
+      // nobody signed in: continue as a guest (needs "Anonymous" turned on in the Firebase console)
+      if (!u && tracking) signInGuest();
+    });
+  }
+
+  const signInGuest = () => auth.signInAnonymously().catch((e) => console.warn('guest', e.code || e));
+
+  function setAccount(u) {
+    account = u;
+    const was = user;
+    user = u && !u.isAnonymous ? u : null;
+    if (user) {
+      db.collection('pr_private').doc(user.uid).set({
+        email: user.email || '', fullName: user.displayName || '', lastSeen: Date.now(),
+      }, { merge: true }).catch((e) => console.warn('pr_private', e.code || e));
+    }
+    if (tracking && account && session.uid !== account.uid) startSession();   // a visit: logged even before any play
+    if (user !== was || (user && was && user.uid !== was.uid)) emit();
+  }
+
+  // One session per visit and account. Switching accounts part-way starts a new one from that moment.
+  function startSession() {
+    session.base = session.uid ? lastSeconds : 0;
+    session.uid = account.uid;
+    session.id = `${account.uid.slice(0, 8)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    session.startedAt = Date.now();
+    session.saved = false;
+    writeSession({ seconds: lastSeconds, levels: 0, lastLevel: '' });
+  }
+  function writeSession(d) {
+    session.saved = true; session.wrote = Math.round(d.seconds);
+    return db.collection('pr_sessions').doc(session.id).set({
+      uid: account.uid, name: nameOf(), guest: !user,
+      startedAt: session.startedAt, lastBeat: Date.now(),
+      seconds: Math.max(0, Math.round(d.seconds - session.base)), levels: d.levels, lastLevel: d.lastLevel || '', device: DEVICE,
+    }).catch((e) => console.warn('session', e.code || e));
   }
 
   // Paint Drops wallet: earned/spent only grow, so the bigger one wins; owned items combine;
@@ -138,6 +180,23 @@ const Cloud = (() => {
     return better >= 100 ? null : better + 1;
   }
 
+  // A guest signing in keeps the same account (and its history), now with Google attached.
+  // If that Google account already exists, sign in to it instead.
+  async function linkGuest(guest, provider) {
+    let res;
+    try {
+      res = await guest.linkWithPopup(provider);
+    } catch (e) {
+      if (e.code === 'auth/credential-already-in-use' && e.credential) return auth.signInWithCredential(e.credential);
+      throw e;
+    }
+    const u = res.user, g = u.providerData.find((p) => p.providerId === 'google.com');
+    if (g && (!u.displayName || !u.photoURL)) await u.updateProfile({ displayName: u.displayName || g.displayName, photoURL: u.photoURL || g.photoURL }).catch(() => { });
+    await u.getIdToken(true).catch(() => { });   // a fresh token that says "Google" for the database rules
+    setAccount(u);   // linking doesn't fire onAuthStateChanged
+    return res;
+  }
+
   return {
     get available() { return available; },
     get user() { return user; },
@@ -155,26 +214,34 @@ const Cloud = (() => {
       if (!available) throw new Error('offline');
       const provider = new firebase.auth.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
+      const guest = account && account.isAnonymous ? account : null;
       try {
-        await auth.signInWithPopup(provider);
+        if (guest) await linkGuest(guest, provider);
+        else await auth.signInWithPopup(provider);
       } catch (e) {
         const cantPopup = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/unauthorized-domain', 'auth/web-storage-unsupported'].includes(e.code);
         // inside another site's frame (itch.io) a redirect would leave the game, and Google won't load in a frame
         if (cantPopup && Cloud.embedded) { const err = new Error('embedded'); err.code = 'embedded'; throw err; }
-        if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return auth.signInWithRedirect(provider);
+        if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return guest ? guest.linkWithRedirect(provider) : auth.signInWithRedirect(provider);
         if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return null;
         throw e;
       }
     },
     signOut() { return auth && auth.signOut(); },
+    // The game: log every visit and give signed-out players a guest account, for the stats.
+    trackVisits() {
+      if (!available || tracking) return;
+      tracking = true;
+      if (account) { if (session.uid !== account.uid) startSession(); } else if (isReady) signInGuest();
+    },
     // resolves once every save started so far has reached the server
     flush() { return pending; },
 
     /* A level was finished (completed=true) or abandoned. Logged for the stats dashboard. */
     async logRun(run) {
-      if (!user) return;
+      if (!account) return;
       await db.collection('pr_runs').add(dropUndefined({
-        uid: user.uid, name: publicName(user),
+        uid: account.uid, name: nameOf(), guest: !user,
         level: run.level, levelIdx: run.levelIdx, completed: !!run.completed,
         time: round3(run.time), stars: run.stars || 0, throws: run.throws || 0, deaths: run.deaths || 0,
         played: round3(run.played || run.time || 0),
@@ -184,25 +251,13 @@ const Cloud = (() => {
     },
 
     /* Play time for this visit. `seconds` counts only time spent in a level with the tab
-       visible. A session belongs to whoever is signed in; signing in part-way starts a new one. */
+       visible. A session belongs to the current account (guests too); see startSession. */
     saveSession(d) {
-      if (!user) return Promise.resolve();
-      if (session.uid !== user.uid) {
-        // Count from the start of the visit, unless someone else was signed in before (then from the switch).
-        session.base = session.uid ? d.seconds : 0;
-        session.uid = user.uid;
-        session.id = `${user.uid.slice(0, 8)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-        session.startedAt = Date.now();
-        session.saved = false;
-      }
-      const seconds = Math.round(d.seconds - session.base);
-      if (seconds <= 0 && !session.saved) return Promise.resolve();
-      session.saved = true;
-      return db.collection('pr_sessions').doc(session.id).set({
-        uid: user.uid, name: publicName(user),
-        startedAt: session.startedAt, lastBeat: Date.now(),
-        seconds, levels: d.levels, lastLevel: d.lastLevel || '', device: DEVICE,
-      }).catch((e) => console.warn('session', e.code || e));
+      lastSeconds = d.seconds;
+      if (!account || !tracking) return Promise.resolve();
+      if (session.uid !== account.uid) startSession();
+      if (Math.round(d.seconds) === session.wrote) return Promise.resolve();   // nothing new (e.g. idle on the menu)
+      return writeSession(d);
     },
 
     /* Posts a completed run to the level's leaderboards and returns this player's ranks. */

@@ -202,7 +202,7 @@
 
     // ---- per player ----
     const byUid = {};
-    for (const p of players) byUid[p.uid] = { ...p, runs: [], sessions: [] };
+    for (const p of players) byUid[p.uid] = { ...p, member: true, runs: [], sessions: [] };
     for (const r of runs) (byUid[r.uid] = byUid[r.uid] || { uid: r.uid, name: r.name, runs: [], sessions: [] }).runs.push(r);
     for (const s of sessions) (byUid[s.uid] = byUid[s.uid] || { uid: s.uid, name: s.name, runs: [], sessions: [] }).sessions.push(s);
     const people = Object.values(byUid).map((p) => {
@@ -224,19 +224,36 @@
         sessionCount: p.sessions.filter((s) => s.seconds > 0).length,
         runCount: p.runs.length, deaths: sum(p.runs, (r) => r.deaths), clears: best.length,
         lastActive: lastActive > 0 ? lastActive : null,
-        activeInRange: p.runs.some((r) => inRange(r.at)) || p.sessions.some((s) => inRange(s.lastBeat)),
+        // played = a level attempt or play time; visited = opened the game at all (a session is logged per visit)
+        activeInRange: p.runs.some((r) => inRange(r.at)) || p.sessions.some((s) => inRange(s.lastBeat) && s.seconds > 0),
+        visitedInRange: p.runs.some((r) => inRange(r.at)) || p.sessions.some((s) => inRange(s.lastBeat)),
+        // guests play under an anonymous account; signing in with Google keeps it, so these were guests first
+        guest: !p.member,
+        // guests have no profile: count their levels and stars from their runs
+        ...(p.member ? {} : (() => {
+          const stars = {};
+          for (const r of p.runs) if (r.completed) stars[r.level] = Math.max(stars[r.level] || 0, r.stars || 0);
+          return { levelsCleared: Object.keys(stars).length, totalStars: sum(Object.values(stars)) };
+        })()),
+        wasGuest: !!p.member && (p.runs.some((r) => r.guest) || p.sessions.some((s) => s.guest)),
       };
     });
 
     // ---- overview ----
     const active = people.filter((p) => p.activeInRange);
+    const visitors = people.filter((p) => p.visitedInRange);
+    const activeGuests = active.filter((p) => p.guest).length, activeMembers = active.length - activeGuests;
+    const converted = people.filter((p) => p.wasGuest && p.visitedInRange);
     const newcomers = people.filter((p) => p.joinedAt && inRange(p.joinedAt));
     const playSecs = sum(people, (p) => p.inRange);
     const withTime = people.filter((p) => p.inRange > 0);
     const clears = runsR.filter((r) => r.completed), quits = runsR.filter((r) => !r.completed);
     const kpi = (v, l, d = '') => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div>${d ? `<div class="d">${d}</div>` : ''}</div>`;
     const overview = `<div class="kpis">
-        ${kpi(num(active.length), 'Active players', `of ${num(people.length)} signed up`)}
+        ${kpi(num(visitors.length), 'Visitors', `${pct(active.length, visitors.length)} played a level`)}
+        ${kpi(num(active.length), 'Active players', `${num(activeMembers)} signed in · ${num(activeGuests)} guests`)}
+        ${kpi(pct(activeMembers, active.length), 'Sign-in rate', 'active players signed in with Google')}
+        ${kpi(num(converted.length), 'Guests who signed in', 'played as a guest first')}
         ${kpi(num(newcomers.length), 'New players')}
         ${kpi(dur(playSecs), 'Time played')}
         ${kpi(dur(withTime.length ? playSecs / withTime.length : 0), 'Time per player', 'average')}
@@ -251,7 +268,7 @@
         ${kpi(`<span class="stars">★</span> ${num(sum(people, (p) => p.totalStars))}`, 'Stars owned', 'all players, all time')}
       </div>
       ${sessionsError ? `<p class="note">Play time is not available yet: ${sessionsError === 'permission-denied' ? 'publish the updated firestore.rules in the Firebase console.' : esc(sessionsError)}</p>`
-        : '<p class="note">Play time is time spent inside levels by signed-in players. It uses recorded play sessions (time in a level with the tab visible) and, where those are missing, such as before sessions were recorded, the time spent on each run.</p>'}`;
+        : '<p class="note">Guests are players who haven\'t signed in; they get an anonymous ID, so each browser counts as one guest until they sign in. Visitors opened the game; active players also played a level. Play time is time spent inside levels. It uses recorded play sessions (time in a level with the tab visible) and, where those are missing, such as before sessions were recorded, the time spent on each run.</p>'}`;
 
     // ---- daily charts (always the last 30 days) ----
     const days = Array.from({ length: 30 }, (_, i) => today - (29 - i) * DAY);
@@ -259,13 +276,15 @@
     const activeSets = days.map(() => new Set()), minutes = days.map(() => 0), clearsPerDay = days.map(() => 0);
     const daySess = {}, dayRuns = {};   // per day, per player: seconds from sessions / from runs
     const add = (m, i, uid, v) => { (m[i] = m[i] || {})[uid] = (m[i][uid] || 0) + v; };
-    for (const s of sessions) { const i = dayIdx(s.lastBeat); if (i >= 0 && i < 30) { activeSets[i].add(s.uid); add(daySess, i, s.uid, s.seconds || 0); } }
-    for (const r of runs) { const i = dayIdx(r.at); if (i >= 0 && i < 30) { activeSets[i].add(r.uid); add(dayRuns, i, r.uid, runSecs(r)); if (r.completed) clearsPerDay[i]++; } }
+    const visitSets = days.map(() => new Set());
+    for (const s of sessions) { const i = dayIdx(s.lastBeat); if (i >= 0 && i < 30) { visitSets[i].add(s.uid); if (s.seconds > 0) activeSets[i].add(s.uid); add(daySess, i, s.uid, s.seconds || 0); } }
+    for (const r of runs) { const i = dayIdx(r.at); if (i >= 0 && i < 30) { activeSets[i].add(r.uid); visitSets[i].add(r.uid); add(dayRuns, i, r.uid, runSecs(r)); if (r.completed) clearsPerDay[i]++; } }
     days.forEach((_, i) => {
       const uids = new Set([...Object.keys(daySess[i] || {}), ...Object.keys(dayRuns[i] || {})]);
       for (const u of uids) minutes[i] += Math.max((daySess[i] || {})[u] || 0, (dayRuns[i] || {})[u] || 0) / 60;
     });
     const daily = `<div class="charts">
+        ${barChart({ title: 'Visitors per day', days, values: visitSets.map((s) => s.size), fmt: (v, axis) => (axis ? num(Math.round(v)) : `${v} visitor${v === 1 ? '' : 's'}`) })}
         ${barChart({ title: 'Active players per day', days, values: activeSets.map((s) => s.size), fmt: (v, axis) => (axis ? num(Math.round(v)) : `${v} player${v === 1 ? '' : 's'}`) })}
         ${barChart({ title: 'Minutes played per day', days, values: minutes.map((m) => Math.round(m * 10) / 10), fmt: (v, axis) => (axis ? num(Math.round(v)) : dur(v * 60)), green: true })}
         ${barChart({ title: 'Levels cleared per day', days, values: clearsPerDay, fmt: (v, axis) => (axis ? num(Math.round(v)) : `${v} cleared`) })}
@@ -273,7 +292,7 @@
 
     // ---- players ----
     const playerCols = [
-      { key: 'name', label: 'Player', fmt: (p) => `${avatar(p.photo)} ${esc(p.name)}`, sortVal: (p) => (p.name || '').toLowerCase() },
+      { key: 'name', label: 'Player', fmt: (p) => `${avatar(p.photo)} ${p.guest ? `<span class="muted">${esc(p.name)}</span> <span class="tag">guest</span>` : esc(p.name)}${p.wasGuest ? ' <span class="tag">was a guest</span>' : ''}`, sortVal: (p) => (p.name || '').toLowerCase() },
       { key: 'email', label: 'Email', fmt: (p) => `<span class="muted">${esc(p.email || '—')}</span>` },
       { key: 'total', label: 'Total time', num: true, fmt: (p) => dur(p.total) },
       { key: 'today', label: 'Today', num: true, fmt: (p) => dur(p.today) },
@@ -288,13 +307,14 @@
       { key: 'joinedAt', label: 'Joined', num: true, fmt: (p) => (p.joinedAt ? new Date(p.joinedAt).toLocaleDateString() : '—') },
     ];
     let query = '';
+    let who = store.get('who', 'all');
     const playersTable = table('players', playerCols, people, {
       sort: { key: 'lastActive', dir: -1 },
-      empty: 'Nobody has signed in yet.',
+      empty: 'Nobody here yet.',
       rowId: (p) => p.uid,
       isOpen: (p) => openPlayers.has(p.uid),
       toggle: (uid) => (openPlayers.has(uid) ? openPlayers.delete(uid) : openPlayers.add(uid)),
-      filter: (p) => !query || `${p.name} ${p.email || ''}`.toLowerCase().includes(query),
+      filter: (p) => (who === 'all' || (who === 'guests') === p.guest) && (!query || `${p.name} ${p.email || ''}`.toLowerCase().includes(query)),
       expand: playerDetail,
     });
 
@@ -339,14 +359,22 @@
     app.innerHTML = [
       pane('overview', 'Overview', rangeLabel(), overview),
       pane('daily', 'Daily activity', 'last 30 days', daily),
-      pane('players', 'Players', `${num(people.length)} signed up · click a player for details`,
-        `<div class="toolbar"><input id="search" type="search" placeholder="Search by name or email" aria-label="Search players"></div>${playersTable}`),
+      pane('players', 'Players', `${num(people.filter((p) => !p.guest).length)} signed up · ${num(people.filter((p) => p.guest).length)} guests · click a player for details`,
+        `<div class="toolbar"><input id="search" type="search" placeholder="Search by name or email" aria-label="Search players">
+          <div class="range" id="who-filter" role="group" aria-label="Show">${[['all', 'Everyone'], ['members', 'Signed in'], ['guests', 'Guests']].map(([k, l]) => `<button data-who="${k}" aria-pressed="${k === who}">${l}</button>`).join('')}</div></div>${playersTable}`),
       pane('levels', 'Levels', rangeLabel(), levels),
       pane('activity', 'Recent activity', `latest ${Math.min(200, runsR.length)} attempts ${rangeLabel()}`, '<div id="recent"></div>'),
     ].join('');
 
     const search = document.getElementById('search');
     search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); redraw('players'); });
+    document.getElementById('who-filter').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-who]');
+      if (!b) return;
+      who = b.dataset.who; store.set('who', who);
+      document.querySelectorAll('#who-filter [data-who]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      redraw('players');
+    });
     renderRecent();
   }
 
