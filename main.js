@@ -547,7 +547,7 @@
           if (ev.color && !ev.quiet) {                     // paint splatter stays on the paper for the whole level
             stains.push(ART.makeStain(ev.x, ev.y, COLOR_HEX[ev.color]));
             if (stains.length > 60) stains.shift();
-            if (ev.painted) ART.bloom(ev.x, ev.y, COLOR_HEX[ev.color]);   // (art lab) the color soaks into the paper
+            if (ev.painted) ART.bloom(ev.x, ev.y, COLOR_HEX[ev.color], surfaceAlong(world, ev.x, ev.y));   // (art lab) the color soaks into the paper
           }
           if (ev.painted && look().splat) splatMarks.push({ x: ev.x, y: ev.y, col: ev.color ? COLOR_HEX[ev.color] : '#f4f1ea', life: 1.4, seed: Math.random() * 6 });
           if (ev.quiet) { /* yellow shot hit the player; grow/shrink plays instead */ }
@@ -577,7 +577,7 @@
         case 'warn': sfx.warn(); break;
         case 'shoot': sfx.shoot(); break;
         case 'can': sfx.can(); burst(ev.x, ev.y, '#ffd166', 18, 4, 3); break;
-        case 'portal': sfx.portal(); burst(ev.x, ev.y, COLOR_HEX[PURPLE], 14, 3, 3); ART.bloom(ev.x, ev.y, COLOR_HEX[PURPLE]); break;
+        case 'portal': sfx.portal(); burst(ev.x, ev.y, COLOR_HEX[PURPLE], 14, 3, 3); ART.bloom(ev.x, ev.y, COLOR_HEX[PURPLE], surfaceAlong(world, ev.x, ev.y)); break;
         case 'teleport':
           sfx.teleport();
           burst(ev.fx, ev.fy, COLOR_HEX[PURPLE], 16, 4, 3);
@@ -586,7 +586,6 @@
         case 'win':
           sfx.win();
           for (const c of ALL_COLORS) burst(ev.x, ev.y, COLOR_HEX[c], 16, 7, 5);
-          ART.flood(ev.x, ev.y, ALL_COLORS.map((c) => COLOR_HEX[c]));   // (art lab) the world gets its color back
           break;
       }
     }
@@ -1034,7 +1033,7 @@
       const dist = pl.cling === 1 || pl.cling === -1 ? Math.abs(pl.vy) : Math.abs(pl.vx);
       runPhase = (runPhase + dist / (24 * pl.h / 40)) % 1;
       handleEvents(w);
-      if (w.state === 'won' && w.timer > (ART.opts.flood ? 130 : 70)) completeLevel();   // (a moment longer to watch the color flood)
+      if (w.state === 'won' && w.timer > 70) completeLevel();
     }
     pressed.clear();
 
@@ -1079,6 +1078,12 @@
     ctx.arc(x, y + len, r, Math.PI, 0, true);
     ctx.lineTo(x + r, y);
     ctx.fill();
+  }
+
+  // which way a painted surface runs at a splat: along a floor/ceiling ('h') or up a wall ('v')
+  function surfaceAlong(w, x, y) {
+    const at = (dx, dy) => w.solid(Math.floor((x + dx) / T), Math.floor((y + dy) / T));
+    return at(0, 10) || at(0, -10) ? 'h' : at(10, 0) || at(-10, 0) ? 'v' : 'h';
   }
 
   function drawBackground() {
@@ -1702,7 +1707,6 @@
       ['color', 'Paint on paper', [['off', 'Today'], ['bloom', 'Watercolor'], ['sketch', 'Watercolor + sketch']]],
       ['living', 'Background', [[false, 'Still'], [true, 'Living']]],
       ['parallax', 'Depth', [[false, 'Flat'], [true, 'Parallax']]],
-      ['flood', 'Level finish', [[false, 'Today'], [true, 'Color flood']]],
     ];
     const lab = document.createElement('div');
     lab.id = 'artlab';
@@ -1716,8 +1720,8 @@
       const b = e.target.closest('button'); if (!b) return;
       b.blur();
       if (b.dataset.lab === 'toggle') lab.classList.toggle('min');
-      if (b.dataset.lab === 'all') Object.assign(ART.opts, { color: 'sketch', living: true, parallax: true, flood: true });
-      if (b.dataset.lab === 'none') Object.assign(ART.opts, { color: 'off', living: false, parallax: false, flood: false });
+      if (b.dataset.lab === 'all') Object.assign(ART.opts, { color: 'sketch', living: true, parallax: true });
+      if (b.dataset.lab === 'none') Object.assign(ART.opts, { color: 'off', living: false, parallax: false });
       if (b.dataset.lab === 'retry' && game.world) startLevel(game.levelIdx);
       if (b.dataset.k) ART.opts[b.dataset.k] = b.dataset.k === 'color' ? b.dataset.v : b.dataset.v === 'true';
       try { localStorage.setItem(KEY, JSON.stringify(ART.opts)); } catch (err) { /* ignore */ }

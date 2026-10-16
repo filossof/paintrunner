@@ -366,12 +366,11 @@ const ART = (() => {
   //             'sketch': ...and colors the pencil drawing it touches
   //   living  - clouds drift, birds fly, the windmill turns, smoke rises, stars twinkle
   //   parallax- the drawing behind the level shifts a little as you move: depth
-  //   flood   - finishing a level washes the whole page in your colors
   // ============================================================
   // living backgrounds and parallax are the look for everyone (still, for players who ask for less motion)
   const calm = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const opts = { color: 'off', living: !calm, parallax: !calm, flood: false };
-  const layered = () => opts.color !== 'off' || opts.living || opts.parallax || opts.flood;
+  const opts = { color: 'off', living: !calm, parallax: !calm };
+  const layered = () => opts.color !== 'off' || opts.living || opts.parallax;
 
   // the sketch in layers, for living/parallax backgrounds (cached per level)
   const M = 28;                                   // spare margin around each layer, for the parallax shift
@@ -478,6 +477,8 @@ const ART = (() => {
   function paintBloom(g, b, k) {
     const [R, G, B] = rgb(b.col), e = 1 - Math.pow(1 - Math.min(1, k), 3), rad = b.r * e, s = b.strength;
     if (rad < 1) return;
+    g.save();
+    g.translate(b.x, b.y); g.scale(b.along === 'v' ? 0.5 : 2, b.along === 'v' ? 2 : 0.5); g.translate(-b.x, -b.y);
     for (let i = 0; i < 3; i++) {
       const a = b.seed * 7 + i * 2.4, d = rad * 0.28 * hash(b.seed + i, 3);
       const x = b.x + Math.cos(a) * d, y = b.y + Math.sin(a) * d * 0.8, r = rad * (0.62 + 0.38 * hash(i, b.seed));
@@ -495,21 +496,12 @@ const ART = (() => {
         g.beginPath(); g.arc(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d * 0.86, 0.6 + hash(i, i + b.seed) * 1.1, 0, Math.PI * 2); g.fill();
       }
     }
+    g.restore();
   }
-  function bloom(x, y, col, size = 1) {
-    if (opts.color === 'off' && !opts.flood) return;
-    if (opts.color === 'off' && size < 2) return;
-    blooms.push({ x, y, col, r: (18 + Math.random() * 8) * size, seed: Math.floor(Math.random() * 1000), born: performance.now(), dur: 500 + size * 300, strength: 0.85 });
-  }
-  // finishing a level: big blooms of your colors roll out from the flag across the page
-  function flood(x, y, cols) {
-    if (!opts.flood || !cols.length) return;
-    const now = performance.now();
-    for (let i = 0; i < 30; i++) {
-      const a = (i / 30) * Math.PI * 2 * 3.1 + Math.random() * 0.4, d = 40 + (i / 30) * 900 + Math.random() * 60;
-      blooms.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.6, col: cols[i % cols.length], r: 120 + Math.random() * 80,
-        seed: Math.floor(Math.random() * 1000), born: now + d * 0.9, dur: 900, strength: 0.85 });
-    }
+  // along: 'h' for a floor or ceiling, 'v' for a wall - the wash spreads along the surface, low and wide
+  function bloom(x, y, col, along = 'h', size = 1) {
+    if (opts.color === 'off') return;
+    blooms.push({ x, y, col, along, r: (14 + Math.random() * 6) * size, seed: Math.floor(Math.random() * 1000), born: performance.now(), dur: 500 + size * 300, strength: 0.85 });
   }
   function resetLevel() { if (bleed) bleedG.clearRect(0, 0, W, H); blooms = []; }
   // the bleed layer this frame: settled blooms, plus the ones still spreading
@@ -542,7 +534,7 @@ const ART = (() => {
       else g.drawImage(sc.still, -M + mid[0] * 0.6, -M + mid[1] * 0.6);
     };
     drawSketch(ctx);
-    if (opts.color !== 'off' || opts.flood) {
+    if (opts.color !== 'off') {
       const b = bleedNow();
       ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(b, 0, 0); ctx.restore();
       if (opts.color === 'sketch') {
@@ -561,5 +553,5 @@ const ART = (() => {
   }
 
   return { inkPattern, paper, plainPaper, inkLine, drawTiles, drawLava, makeStain, drawStains, shadow, vignette,
-    opts, layered, drawScene, setCamera, bloom, flood, resetLevel };
+    opts, layered, drawScene, setCamera, bloom, resetLevel };
 })();
