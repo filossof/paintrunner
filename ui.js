@@ -39,8 +39,7 @@ const UI = (() => {
     const left = `<button class="btn" data-act="boards">🏆 Leaderboards <small>(L)</small></button>` +
       `<button class="btn" data-act="chars">🎭 Characters <small>(C)</small></button>` +
       `<button class="btn" data-act="store">🛍️ Store <small>(S)</small></button>` +
-      `<button class="btn" data-act="controls">🎮 Controls</button>` +
-      `<button class="btn" data-act="full" title="Full screen (F)">⛶ Full screen <small>(F)</small></button>` +
+      `<button class="btn" data-act="settings">⚙️ Settings</button>` +
       (Cloud.isAdmin ? `<a class="btn small" href="${Cloud.HOME_URL}stats.html" target="_blank" rel="noopener">📊 Stats</a>` : '');
     // tips go through itch.io's own payment window, opened in a new tab
     const support = `<a class="btn support" href="${SUPPORT_URL}" target="_blank" rel="noopener" title="Enjoying the game? Tip what you like">💛 Support</a>`;
@@ -66,7 +65,7 @@ const UI = (() => {
     if (act === 'full') api.toggleFullscreen();
     if (act === 'chars') openCharacters();
     if (act === 'store') openStore();
-    if (act === 'controls') openControls();
+    if (act === 'settings') openSettings();
     if (act === 'ach') openAchievements();
   });
   // the little account menu under your picture: closes on any press outside it
@@ -205,36 +204,130 @@ const UI = (() => {
     { id: 'twinstick', name: 'Twin Stick', pic: '<i class="stick l"></i><i class="stick r">🎯</i><i class="btn-j" style="right:42px">J</i><span class="tap">👆</span>',
       text: 'Left stick moves. Right stick aims and throws while you push it. JUMP button beside it. Touching the level still throws.' },
   ];
-  function openControls() {
+  // ---------- settings: the ghost, touch controls, sound, full screen ----------
+  const GHOST_MODES = [
+    { id: 'top', icon: '👻', name: '#1 record', text: 'Race the fastest run on each level' },
+    { id: 'mine', icon: '🏃', name: 'My best', text: 'Race your own best run' },
+    { id: 'off', icon: '🚫', name: 'Off', text: 'No ghost' },
+  ];
+  function openSettings() {
     if (modal) close();
     modal = document.createElement('div');
     modal.className = 'modal-back';
+    const touch = api.touchControls();
     modal.innerHTML = `
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ctl-title" style="max-width:620px">
+      <div class="modal settings" role="dialog" aria-modal="true" aria-labelledby="set-title" style="max-width:640px">
         <div class="modal-head">
-          <h2 id="ctl-title">🎮 Controls</h2>
+          <h2 id="set-title">⚙️ Settings</h2>
           <button class="close" data-act="close" aria-label="Close">✕</button>
         </div>
-        <div class="modal-body"><div class="ctl-list" role="radiogroup" aria-label="Touch controls"></div>
-          <p class="note">Your choice is saved on this device. Try each one on a level or two.</p></div>
+        <div class="modal-body"></div>
       </div>`;
     document.body.appendChild(modal);
+    const body = modal.querySelector('.modal-body');
     const render = () => {
-      const cur = api.controls();
-      modal.querySelector('.ctl-list').innerHTML = CONTROL_SCHEMES.map((c) => `
-        <button class="ctl" role="radio" aria-checked="${c.id === cur}" data-scheme="${c.id}">
-          <span class="ctl-pic" aria-hidden="true">${c.pic}</span>
-          <span><h3>${c.name} ${c.id === cur ? '<span class="chk">✓ in use</span>' : ''}</h3><p>${c.text}</p></span>
-        </button>`).join('');
+      const g = Ghost.chosen() ? Ghost.mode : null, cur = api.controls();
+      const scheme = CONTROL_SCHEMES.find((c) => c.id === cur) || CONTROL_SCHEMES[0];
+      body.innerHTML = `
+        <section class="set-sec">
+          <h3>👻 Ghost <small>a see-through runner to race${touch ? '' : ' · <kbd>G</kbd>'}</small></h3>
+          <div class="set-opts" role="radiogroup" aria-label="Ghost">${GHOST_MODES.map((m) => `
+            <button class="set-opt" role="radio" aria-checked="${m.id === g}" data-ghost="${m.id}">
+              <span class="set-ico" aria-hidden="true">${m.icon}</span><b>${m.name}</b><small>${m.text}</small></button>`).join('')}</div>
+          <p class="note">Record runs are saved from now on. Until a level's #1 player races it again, you race the fastest recorded run there.</p>
+        </section>
+        ${touch ? `<section class="set-sec">
+          <h3>🎮 Controls</h3>
+          <div class="set-opts" role="radiogroup" aria-label="Touch controls">${CONTROL_SCHEMES.map((c) => `
+            <button class="set-opt" role="radio" aria-checked="${c.id === cur}" data-scheme="${c.id}">
+              <span class="ctl-pic" aria-hidden="true">${c.pic}</span><b>${c.name}</b></button>`).join('')}</div>
+          <p class="note">${scheme.text}</p>
+        </section>` : ''}
+        <section class="set-sec">
+          <h3>🔊 Sound</h3>
+          <div class="set-switches">
+            <button class="switch" role="switch" aria-checked="${Sound.musicOn}" data-switch="music"><i></i>Music${touch ? '' : ' <kbd>M</kbd>'}</button>
+            <button class="switch" role="switch" aria-checked="${Sound.sfxOn}" data-switch="sfx"><i></i>Sound effects</button>
+          </div>
+        </section>
+        ${touch ? '' : `<section class="set-sec">
+          <h3>🖥️ Screen</h3>
+          <div class="set-switches"><button class="btn small" data-act="full">⛶ Full screen <kbd>F</kbd></button></div>
+        </section>`}`;
     };
     render();
     modal.addEventListener('click', (e) => {
       if (e.target === modal || e.target.closest('[data-act="close"]')) return close();
-      const b = e.target.closest('[data-scheme]');
-      if (b) { api.setControls(b.dataset.scheme); render(); api.toast(`Controls: ${CONTROL_SCHEMES.find((c) => c.id === b.dataset.scheme).name}`); }
+      const t = e.target.closest('[data-ghost], [data-scheme], [data-switch], [data-act="full"]');
+      if (!t) return;
+      if (t.dataset.ghost) api.setGhostMode(t.dataset.ghost);
+      if (t.dataset.scheme) api.setControls(t.dataset.scheme);
+      if (t.dataset.switch === 'music') Sound.toggleMusic();
+      if (t.dataset.switch === 'sfx') Sound.setSfx(!Sound.sfxOn);
+      if (t.dataset.act === 'full') { close(); api.toggleFullscreen(); return; }
+      render();
+      const again = body.querySelector(`[data-ghost="${t.dataset.ghost}"], [data-scheme="${t.dataset.scheme}"], [data-switch="${t.dataset.switch}"]`);
+      if (again) again.focus();
     });
-    modal.querySelector('.close').focus();
+    (body.querySelector('[aria-checked="true"]') || modal.querySelector('.close')).focus({ preventScroll: true });
   }
+
+  // ---------- after your first cleared level: race the #1 ghost? ----------
+  function openGhostIntro() {
+    if (modal) close();
+    modal = document.createElement('div');
+    modal.className = 'modal-back';
+    modal.innerHTML = `
+      <div class="modal ghost-intro" role="dialog" aria-modal="true" aria-labelledby="gi-title" style="max-width:440px">
+        <div class="modal-body">
+          <canvas class="gi-scene" width="400" height="110" aria-hidden="true"></canvas>
+          <h2 id="gi-title">👻 Race the record holder?</h2>
+          <p>See a ghost of the fastest run on each level while you play: the #1 record. Follow its path, find its shortcuts, and try to beat it.</p>
+          <div class="gi-actions">
+            <button class="btn big" data-gi="top">👻 Yes, show me the ghost</button>
+            <button class="btn" data-gi="off">No thanks</button>
+          </div>
+          <p class="note">You can change this any time in ⚙️ Settings.</p>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    // a little race: the ghost a step ahead, you chasing
+    const cv = modal.querySelector('.gi-scene'), cx = cv.getContext('2d');
+    const ch = (api.characters().find((c) => c.selected) || api.characters()[0]);
+    let raf = 0;
+    const frame = (now) => {
+      if (!document.body.contains(cv)) return;
+      const t = now / 1000, w = cv.width, h = cv.height, floor = h - 18;
+      cx.clearRect(0, 0, w, h);
+      cx.fillStyle = '#1c1c1f'; cx.fillRect(0, floor, w, h - floor);
+      const lap = (t * 0.22) % 1, x = -30 + lap * (w + 60);
+      const hop = (ph) => Math.abs(Math.sin(t * 6 + ph)) * 6;
+      const draw = (px, alpha, ph, look) => {
+        cx.save(); cx.globalAlpha = alpha; cx.translate(px, floor - hop(ph));
+        SHOP.drawHero(cx, ch, { s: 1, col: alpha < 1 ? '#e9e6df' : '#2f7bff', t, run: (t * 2.2 + ph) % 1, moving: 1, air: hop(ph) > 2, face: 1, squash: 1 }, look);
+        cx.restore();
+      };
+      draw(x + 46, 0.38, 0.9, {});
+      draw(x, 1, 0, api.look ? api.look() : {});
+      cx.globalAlpha = 0.8; cx.fillStyle = '#fff'; cx.font = '700 11px ui-rounded, system-ui, sans-serif'; cx.textAlign = 'center';
+      cx.fillText('👻 #1', x + 46, floor - 52); cx.globalAlpha = 1;
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    const choose = (m) => {
+      cancelAnimationFrame(raf);
+      api.setGhostMode(m);
+      close();
+      api.toast(m === 'top' ? (api.touchControls() ? '👻 Ghost on! Tap Retry to race it' : '👻 Ghost on! Press R to race it') : 'No ghost. Turn it on any time in ⚙️ Settings', 2600);
+    };
+    modal.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-gi]');
+      if (b) return choose(b.dataset.gi);
+      if (e.target === modal) choose('off');
+    });
+    modal.querySelector('[data-gi="top"]').focus();
+  }
+
 
   // ---------- store ----------
   const fmtN = (n) => n.toLocaleString();
@@ -553,7 +646,8 @@ const UI = (() => {
     openLeaderboard,
     openCharacters,
     openStore,
-    openControls,
+    openSettings,
+    openGhostIntro,
     openAchievements,
     refresh: () => render(),
     get modalOpen() { return !!modal; },

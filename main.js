@@ -143,7 +143,7 @@
     '<div class="palette"><div class="pal-btn" aria-label="Choose a color"></div></div>';
   if (touchMode) document.body.appendChild(pad);
   const padBtn = (k) => pad.querySelector(`[data-k="${k}"]`);
-  // Three control schemes, chosen in 🎮 Controls on the menu (saved on this device):
+  // Three control schemes, chosen in ⚙️ Settings on the menu (saved on this device):
   //   classic   - joystick moves, JUMP button, touch the level to throw (hold to keep throwing)
   //   twintap   - left stick moves (tap it to throw, hold to keep throwing); right stick aims (tap it to jump)
   //   twinstick - left stick moves; right stick aims and throws while pushed; JUMP button beside it
@@ -507,6 +507,8 @@
     game.levelIdx = i;
     game.world = new World(LEVELS[i]);
     game.mode = 'play';
+    Ghost.resetRecording(); Ghost.record(game.world);
+    loadGhost(i);
     game.color = LEVELS[i].colors[0];
     game.runStomps = 0;
     heroTrail = SHOP.makeTrail();
@@ -617,14 +619,27 @@
     if (w.throws === 1) Achievements.unlock('minimalist');
     if (w.deaths === 0) Achievements.add('cleanRuns');
     achCheck();
-    postResult(game.lastResult, true);
+    // the run's recording: your own best ghost here, and in your account once it's on the leaderboard
+    const ghost = Ghost.finished(time, { char: currentCharacter().id, hat: look().hat, skin: look().skin });
+    if (ghost) Ghost.keepMine(key, ghost);
+    postResult(game.lastResult, true, ghost);
     game.mode = 'complete';
+    // the first level you clear: would you like to race the #1 ghost?
+    if (!Ghost.chosen() && typeof UI !== 'undefined') {
+      // once the result has sunk in and any achievement cards have gone
+      const ask = () => {
+        if (game.mode !== 'complete' || Ghost.chosen()) return;
+        if (UI.modalOpen || achShowing || achQueue.length) return setTimeout(ask, 500);
+        UI.openGhostIntro();
+      };
+      setTimeout(ask, 1800);
+    }
   }
 
   // ---------- online (leaderboards + stats) ----------
   const online = () => typeof Cloud !== 'undefined' && Cloud.available;
 
-  function postResult(result, completed) {
+  function postResult(result, completed, ghost) {
     if (!online()) { result.cloud = null; return; }
     const lv = LEVELS[game.levelIdx];
     const run = { level: lv.name, levelIdx: game.levelIdx, completed, time: result.time, stars: result.stars, throws: result.throws, deaths: result.deaths, played: game.world ? game.world.playFrames / 60 : result.time };
@@ -638,6 +653,8 @@
       .then((ranks) => {
         result.cloud = ranks;
         if (ranks && [ranks.fastest, ranks.perfect, ranks.efficient].includes(1)) Achievements.unlock('top-board');
+        // now that the time is on the leaderboard, this run can be your ghost for everyone else
+        if (ghost) Cloud.saveGhost(lv.name, ghost).then((saved) => { if (saved) delete topGhosts[lv.name]; }).catch((e) => console.warn('ghost', e.code || e));
       })
       .catch((e) => { console.warn('submitScore', e); result.cloud = 'error'; });
   }
@@ -719,6 +736,86 @@
 
   // Anyone can play; signing in (optional) saves progress to the account and adds the leaderboards.
   function play(i) { startLevel(i); }
+
+  // ---------- ghosts (recording and playback: ghost.js) ----------
+  // The ghost for a level: the fastest recorded run ('top'), or your own best ('mine').
+  // Fastest runs are looked up once every few minutes per level; your own come from this device
+  // (or your account, if you set them on another one).
+  const topGhosts = {};
+  let ghostReq = 0;
+  function loadGhost(i) {
+    const name = LEVELS[i].name, req = ++ghostReq;
+    Ghost.use(null);
+    const mine = () => {
+      const g = Ghost.loadMine(name);
+      if (g) { Ghost.use(g, 'Your best'); return true; }
+      return false;
+    };
+    if (Ghost.mode === 'off') return;
+    if (Ghost.mode === 'mine' || !online()) {
+      if (mine() || Ghost.mode !== 'mine') return;
+      if (online() && Cloud.user) {
+        Cloud.myGhost(name).then((g) => {
+          if (!g || req !== ghostReq) return;
+          Ghost.keepMine(name, g);
+          Ghost.use(g, 'Your best');
+        }).catch(() => { });
+      }
+      return;
+    }
+    const show = (r) => {
+      if (req !== ghostReq || game.mode !== 'play') return;
+      const g = r.ghost;
+      if (g) {
+        const who = Cloud.user && g.uid === Cloud.user.uid ? 'You' : g.name;
+        const isRecord = r.recordTime === null || g.time <= r.recordTime + 0.0005;
+        Ghost.use(g, isRecord ? `#1 ${who}` : `Fastest ghost · ${who}`);
+      } else if (mine()) {
+        showToast('👻 No record ghost here yet - racing your best run', 2200);
+      } else {
+        showToast('👻 No ghost on this level yet. Set the first one!', 2200);
+      }
+    };
+    const c = topGhosts[name];
+    if (c && Date.now() - c.at < 5 * 60000) return show(c);
+    Cloud.fastestGhost(name)
+      .then((r) => { topGhosts[name] = { ...r, at: Date.now() }; show(r); })
+      .catch((e) => { console.warn('ghost', e.code || e); if (req === ghostReq) mine(); });
+  }
+  function setGhostMode(m) {
+    Ghost.setMode(m);
+    if (game.mode === 'play') loadGhost(game.levelIdx);
+  }
+
+  // a see-through runner in the ghost's own character and hat, with a name tag
+  function drawGhost(w) {
+    const g = Ghost.current;
+    const s = g && Ghost.at(w.frame);
+    if (!s) return;
+    const small = s.fl & Ghost.SMALL, sz = SIZES[small ? 'small' : 'big'], k = sz.h / 40;
+    const cling = (s.fl >> 4) & 3;   // 1 right wall, 2 left wall, 3 ceiling
+    const ch = CHARACTERS.find((c) => c.id === g.char) || CHARACTERS[0];
+    const fade = s.done ? 0.5 : 1;
+    const o = {
+      s: k, col: '#e9e6df', t: game.tick / 60, run: (game.tick / 14) % 1, moving: s.fl & Ghost.MOVING ? 1 : 0,
+      air: !!(s.fl & Ghost.AIR), face: cling === 1 ? 1 : cling === 2 ? -1 : s.fl & Ghost.LEFT ? -1 : 1, squash: 1,
+    };
+    ctx.save();
+    ctx.globalAlpha = 0.38 * fade;
+    if (cling === 3) { ctx.translate(s.x + sz.w / 2, s.y); ctx.scale(1, -1); } else ctx.translate(s.x + sz.w / 2, s.y + sz.h);
+    SHOP.drawHero(ctx, ch, o, { hat: g.hat, skin: g.skin });
+    ctx.restore();
+    // name tag
+    const tag = s.done ? `👻 ${g.time.toFixed(3)}s` : `👻 ${g.label}`;
+    ctx.save();
+    ctx.globalAlpha = 0.75 * fade;
+    ctx.font = '700 11px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
+    const tw = ctx.measureText(tag).width + 12, tx = s.x + sz.w / 2, ty = (cling === 3 ? s.y + sz.h + 14 : s.y - 16);
+    ctx.fillStyle = 'rgba(20,20,24,0.75)';
+    roundRect(tx - tw / 2, ty - 8, tw, 16, 8); ctx.fill();
+    text(tag, tx, ty + 0.5, 11, '#fff', 'center', 700);
+    ctx.restore();
+  }
 
   // ---------- achievements (list and saving: achievements.js) ----------
   let levelColors = new Set(), lastBounceTick = -999, ceilingFrames = 0;
@@ -828,6 +925,11 @@
 
     if (tapped('KeyM')) showToast(Sound.toggleMusic() ? '♪ Music on' : '♪ Music off');
     if (tapped('KeyF')) toggleFullscreen();
+    if (tapped('KeyG')) {
+      const next = Ghost.MODES[(Ghost.MODES.indexOf(Ghost.mode) + 1) % Ghost.MODES.length];
+      setGhostMode(next);
+      showToast({ top: '👻 Ghost: #1 record', mine: '👻 Ghost: your best run', off: '👻 Ghost off' }[next], 1800);
+    }
     if (tapped('KeyS') && (game.mode === 'title' || game.mode === 'complete') && typeof UI !== 'undefined') {
       UI.openStore();
       pressed.clear(); keys.clear(); mouse.down = false;
@@ -892,6 +994,7 @@
       if (mouse.down || mouse.right) w.throwPaint(mouse.x, mouse.y, wash ? NONE : game.color);
 
       w.step(inp);
+      Ghost.record(w);
       if (w.state === 'play' && w.player.cling === 2) { if (++ceilingFrames >= 300) Achievements.unlock('spider-painter'); } else ceilingFrames = 0;
       if (!document.hidden) {
         playLog.seconds += 1 / 60;
@@ -1323,6 +1426,7 @@
     drawMonsters(w);
     drawCosmetics(w);
     drawBlobs(w);
+    drawGhost(w);
     drawPlayer(w);
     SHOP.drawBurst(ctx, pops, look().pop);
     drawParticles();
@@ -1402,7 +1506,7 @@
     const dropsW = ctx.measureText(`${drops().toLocaleString()} Paint Drops`).width;
     const fullW = ctx.measureText(`★ ${totalStars()} / ${LEVELS.length * 3} stars        ${drops().toLocaleString()} Paint Drops`).width;
     SHOP.drawDrop(ctx, W / 2 + fullW / 2 - dropsW - 12, 493, 6);
-    drawHelpLine(touchMode ? 'Choose how to play in 🎮 Controls  ·  🏅 Achievements earn Paint Drops' : 'A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · M music · F full screen');
+    drawHelpLine(touchMode ? 'Choose your controls in ⚙️ Settings  ·  🏅 Achievements earn Paint Drops' : 'A/D move · W/Space jump · Mouse aim · Click throw · Right-click wash · 1-5 colors · G ghost · M music · F full screen');
     if (game.toast) text(game.toast.str, W / 2, 30, 14, INK, 'center', 600);
   }
 
@@ -1589,6 +1693,8 @@
       touchControls: () => touchMode,
       controls: () => scheme,
       setControls: (s) => setScheme(s),
+      setGhostMode,
+      look,
     });
   }
 

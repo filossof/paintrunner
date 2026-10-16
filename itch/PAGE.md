@@ -27,6 +27,7 @@ Monsters play by the same rules. Paint the floor under an Inky and watch it race
 - 3 paint cans to collect in every level, 135 stars in all
 - No checkpoints. Every level is a short, sharp run you can master
 - Online leaderboards for fastest time, fastest 3-can run and fewest throws
+- Ghost racing: race a see-through replay of the #1 run on every level, or your own best
 - 12 unlockable characters, from Ink Blob to Paint Drop
 - 43 achievements - easy, hard and funny ones - with 1,500 Paint Drops and an exclusive Golden Trophy hat for getting them all
 - A cosmetic store with 40 hats, trails, colors, splats, flags and effects, bought with Paint Drops you earn by playing (nothing pay-to-win, no real money)
@@ -37,11 +38,11 @@ Monsters play by the same rules. Paint the floor under an Inky and watch it race
 - W / Space: jump
 - Mouse: aim, click to throw paint, right-click to wash paint off
 - 1-5: pick a color
-- R: restart · Esc: menu · M: music · F: full screen
+- R: restart · Esc: menu · G: ghost · M: music · F: full screen
 
-Best played with a keyboard and mouse.
+**On phones and tablets:** turn your device sideways and play with touch controls. Pick from 3 control styles in ⚙️ Settings.
 
-**Just hit play, no account needed.** Sign in with Google (optional) to put your times on the leaderboards and save your progress, stars and Paint Drops to your account so they follow you to any computer. Leaderboards only show your first name and last initial.
+**Just hit play, no account needed.** Sign in with Google (optional) to put your times on the leaderboards and save your progress, stars and Paint Drops to your account so they follow you to any device. Leaderboards only show your first name and last initial.
 
 **Free to play.** If you enjoy it, a tip helps a lot and tells me to keep making more worlds. 💛
 

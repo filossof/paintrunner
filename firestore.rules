@@ -44,6 +44,18 @@ service cloud.firestore {
         && (!('fewestThrows' in request.resource.data) || (request.resource.data.fewestThrows is int && request.resource.data.fewestThrows >= 0));
     }
 
+    // Ghosts: each player's fastest recorded run of a level, which others race. Public to read.
+    // Only your own, only once that time is on the leaderboard, and never faster than your best there.
+    match /pr_levels/{level}/pr_ghosts/{uid} {
+      allow read: if true;
+      allow create, update: if member() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && request.resource.data.data is string && request.resource.data.data.size() <= 250000
+        && request.resource.data.time is number
+        && request.resource.data.time >= get(/databases/$(database)/documents/pr_levels/$(level)/pr_scores/$(uid)).data.bestTime;
+    }
+
     // Play sessions (one per visit: how long people actually play), for the stats page. Guests too.
     match /pr_sessions/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid

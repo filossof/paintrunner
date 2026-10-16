@@ -7,6 +7,7 @@
      pr_players/{uid}                      public profile + progress (for the star ranking)
      pr_private/{uid}                      email; only the admin can read it
      pr_levels/{levelKey}/pr_scores/{uid}  one row per player per level: their bests
+     pr_levels/{levelKey}/pr_ghosts/{uid}  each player's fastest recorded run of the level (ghost.js)
      pr_runs/{autoId}                      every finished or abandoned attempt (admin stats)
      pr_sessions/{id}                      one per visit: how long the player actually played (admin stats)
 
@@ -36,6 +37,7 @@ const Cloud = (() => {
 
   const levelKey = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const scores = (name) => db.collection('pr_levels').doc(levelKey(name)).collection('pr_scores');
+  const ghosts = (name) => db.collection('pr_levels').doc(levelKey(name)).collection('pr_ghosts');
 
   // Leaderboards are public, so only show "First L." rather than a full name.
   function publicName(u) {
@@ -361,6 +363,36 @@ const Cloud = (() => {
         if (s.exists) me = s.data();
       }
       return { fastest, perfect, efficient, me };
+    },
+
+    /* Keeps this run as your ghost for the level if it's faster than the one you have there.
+       (The database only accepts it after the run is on the leaderboard, never faster than your best.) */
+    saveGhost(name, g) {
+      if (!user) return Promise.resolve(false);
+      return track((async () => {
+        const ref = ghosts(name).doc(user.uid);
+        const old = await ref.get();
+        if (old.exists && old.data().time <= g.time) return false;
+        await ref.set({
+          uid: user.uid, name: publicName(user), time: round3(g.time), data: g.data,
+          char: g.char || 'blob', hat: g.hat || '', skin: g.skin || '', at: Date.now(),
+        });
+        return true;
+      })());
+    },
+    /* The fastest recorded run of a level, and the level's #1 time (to tell whether that ghost is the record). */
+    async fastestGhost(name) {
+      const [g, top] = await Promise.all([
+        ghosts(name).orderBy('time').limit(1).get(),
+        scores(name).orderBy('bestTime').limit(1).get(),
+      ]);
+      return { ghost: g.empty ? null : g.docs[0].data(), recordTime: top.empty ? null : top.docs[0].data().bestTime };
+    },
+    /* Your own ghost for a level, from your account (e.g. recorded on another device). */
+    async myGhost(name) {
+      if (!user) return null;
+      const d = await ghosts(name).doc(user.uid).get();
+      return d.exists ? d.data() : null;
     },
 
     /* Overall ranking by stars collected. */

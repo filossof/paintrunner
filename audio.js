@@ -8,6 +8,8 @@ const Sound = (() => {
   let ctx = null, master, sfxBus, noiseBuf;
   let musicOn = true;
   try { musicOn = JSON.parse(localStorage.getItem('paintRunner.music') ?? 'true'); } catch (e) { /* ignore */ }
+  let sfxOn = true;
+  try { sfxOn = JSON.parse(localStorage.getItem('paintRunner.sfx') ?? 'true'); } catch (e) { /* ignore */ }
 
   // Browsers only allow audio after a user gesture, so this runs on every key press / click.
   function init() {
@@ -47,7 +49,7 @@ const Sound = (() => {
     if (ctx) return true;
     try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return false; }
     master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
-    sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
+    sfxBus = ctx.createGain(); sfxBus.gain.value = sfxOn ? 1 : 0; sfxBus.connect(master);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -196,6 +198,13 @@ const Sound = (() => {
     return musicOn;
   }
 
+  function setSfx(on) {
+    sfxOn = !!on;
+    try { localStorage.setItem('paintRunner.sfx', JSON.stringify(sfxOn)); } catch (e) { /* ignore */ }
+    if (sfxBus) sfxBus.gain.value = sfxOn ? 1 : 0;
+    return sfxOn;
+  }
+
   // ---------- sound effects ----------
   const sfx = {
     jump: () => tone(380, 0.12, { vol: 0.04, slideTo: 620 }),
@@ -253,5 +262,7 @@ const Sound = (() => {
   return {
     init, tryAutoplay, soundAllowed, hold, sfx, toggleMusic, setTrack,
     get musicOn() { return musicOn; },
+    get sfxOn() { return sfxOn; },
+    setSfx,
   };
 })();
