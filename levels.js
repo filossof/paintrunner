@@ -1254,6 +1254,20 @@ const BOSSES = [
 ];
 for (const b of BOSSES) LEVEL_DEFS.push(b);
 
+// Eraser speed presets to try (index.html#eraser=a / b / c): pixels per frame for each boss, and
+// the countdown in frames. (You run at 3.6; the level-testing bot survives up to about 2.6 - 3.7.)
+const ERASER_PRESETS = {
+  a: { name: 'Fast', speeds: [1.75, 2.2, 1.65, 1.85, 1.85], delay: 240 },
+  b: { name: 'Very fast', speeds: [2.05, 2.55, 1.9, 2.15, 2.2], delay: 180 },
+  c: { name: 'Insane', speeds: [2.4, 2.9, 2.2, 2.45, 2.45], delay: 120 },
+};
+function useEraserPreset(key) {
+  const p = ERASER_PRESETS[key];
+  if (!p) return null;
+  BOSSES.forEach((b, i) => { b.chase = { ...b.chase, speed: p.speeds[i], delay: p.delay }; });
+  return p;
+}
+
 const LEVEL_ORDER = [
   // Blue
   'Blue Bounces', 'Up and Up', 'Meet Inky', 'Wash Day', 'Hat Check', 'On the Move', 'Monster Mash', 'Ink Storm', 'The Eraser Arrives',
@@ -1281,5 +1295,5 @@ const LEVELS = LEVEL_ORDER.map((name) => {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE, BOSSES };
+  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE, BOSSES, ERASER_PRESETS, useEraserPreset };
 }

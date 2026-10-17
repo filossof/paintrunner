@@ -513,6 +513,7 @@
     game.mode = 'play';
     Ghost.resetRecording(); Ghost.record(game.world);
     ART.resetLevel(game.world.level.w, game.world.level.h);
+    if (eraserPreset && game.world.level.chase) showToast(`Eraser: ${eraserPreset.name}`, 2000);
     stepCamera(game.world, true);
     loadGhost(i);
     game.color = LEVELS[i].colors[0];
@@ -1882,6 +1883,10 @@
   // Handy for poking at the game from the browser console.
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
   window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
+
+  // ---------- trying Eraser speeds: index.html#eraser=a / b / c ----------
+  const eraserTry = /eraser=([abc])/.exec(location.hash);
+  const eraserPreset = eraserTry ? useEraserPreset(eraserTry[1]) : null;
 
   // ---------- the story ----------
   // The opening comic plays once for every player, right after the "tap to start" screen.
