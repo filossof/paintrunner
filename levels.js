@@ -1227,35 +1227,36 @@ function chaseLevel({ name, world, colors, hint, speed, delay, parts }) {
 }
 const BOSSES = [
   chaseLevel({
-    name: 'The Eraser Arrives', world: 0, colors: [BLUE], speed: 1.0, delay: 300,
+    name: 'The Eraser Arrives', world: 0, colors: [BLUE], speed: 2.05, delay: 180,
     hint: 'The Eraser is coming! Bounce over the walls on blue before he rubs you out!',
     parts: [['wall'], ['run', { can: true }], ['wall'], ['run'], ['wall'], ['monsters'], ['run', { can: true }], ['wall'], ['run', { can: true }], ['wall']],
   }),
   chaseLevel({
-    name: 'Run, Red, Run', world: 1, colors: [BLUE, RED], speed: 1.25, delay: 270,
+    name: 'Run, Red, Run', world: 1, colors: [BLUE, RED], speed: 2.55, delay: 180,
     hint: 'He is faster now. Bounce on blue, sprint on red, and do not look back!',
     parts: [['wall'], ['pit'], ['run', { can: true }], ['wall'], ['monsters'], ['pit'], ['run', { can: true }], ['wall'], ['pit'], ['run', { can: true }], ['wall']],
   }),
   chaseLevel({
-    name: 'Forest Escape', world: 2, colors: [BLUE, RED, GREEN], speed: 1.3, delay: 240,
+    name: 'Forest Escape', world: 2, colors: [BLUE, RED, GREEN], speed: 1.9, delay: 180,
     hint: 'Climb on green, hang from the ceiling, keep moving!',
     parts: [['wall'], ['pit'], ['run', { can: true }], ['climb'], ['ceiling'], ['run', { can: true }], ['monsters'], ['pit'], ['climb'], ['run', { can: true }], ['wall']],
   }),
   chaseLevel({
-    name: 'Tiny Getaway', world: 3, colors: [BLUE, RED, GREEN, YELLOW], speed: 1.4, delay: 240,
+    name: 'Tiny Getaway', world: 3, colors: [BLUE, RED, GREEN, YELLOW], speed: 2.15, delay: 180,
     hint: 'Shrink on yellow to slip through the tunnels. He will not wait for you!',
     parts: [['wall'], ['tunnel'], ['run', { can: true }], ['pit'], ['climb'], ['tunnel'], ['run', { can: true }], ['ceiling'], ['monsters'], ['tunnel'], ['run', { can: true }], ['wall']],
   }),
   chaseLevel({
-    name: 'The Great Chase', world: 4, colors: [BLUE, RED, GREEN, YELLOW, PURPLE], speed: 1.5, delay: 210,
+    name: 'The Great Chase', world: 4, colors: [BLUE, RED, GREEN, YELLOW, PURPLE], speed: 2.2, delay: 180,
     hint: 'Every color you have. Portals through the metal walls. Run!',
     parts: [['wall'], ['portal'], ['run', { can: true }], ['tunnel'], ['pit'], ['climb'], ['portal'], ['run', { can: true }], ['ceiling'], ['monsters'], ['tunnel'], ['portal'], ['run', { can: true }], ['wall']],
   }),
 ];
 for (const b of BOSSES) LEVEL_DEFS.push(b);
 
-// Eraser speed presets to try (index.html#eraser=a / b / c): pixels per frame for each boss, and
-// the countdown in frames. (You run at 3.6; the level-testing bot survives up to about 2.6 - 3.7.)
+// Eraser speeds: pixels per frame for each boss, and the countdown in frames. Computers play
+// Very fast (the speeds above), phones and tablets Fast; index.html#eraser=a / b / c tries one.
+// (You run at 3.6; the level-testing bot survives up to about 2.6 - 3.7.)
 const ERASER_PRESETS = {
   a: { name: 'Fast', speeds: [1.75, 2.2, 1.65, 1.85, 1.85], delay: 240 },
   b: { name: 'Very fast', speeds: [2.05, 2.55, 1.9, 2.15, 2.2], delay: 180 },

@@ -1884,9 +1884,11 @@
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
   window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
 
-  // ---------- trying Eraser speeds: index.html#eraser=a / b / c ----------
+  // ---------- how fast the Eraser chases ----------
+  // Very fast with a keyboard and mouse, Fast with touch controls; index.html#eraser=a / b / c tries one.
   const eraserTry = /eraser=([abc])/.exec(location.hash);
   const eraserPreset = eraserTry ? useEraserPreset(eraserTry[1]) : null;
+  if (!eraserTry) useEraserPreset(touchMode ? 'a' : 'b');
 
   // ---------- the story ----------
   // The opening comic plays once for every player, right after the "tap to start" screen.
