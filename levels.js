@@ -1203,12 +1203,41 @@ const LEVEL_ORDER = [
   'Lava Lake', 'Lava Ferry', 'Gauntlet', 'Grand Finale', 'Masterpiece',
 ];
 
+// ---------- WOW test level (index.html#wow): three screens wide, with the Eraser chasing you ----------
+const WOW_LEVEL = (() => {
+  const cols = 96, rows = 17;
+  const g = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => (r === 0 || r >= 14 || c === 0 || c === cols - 1 ? '#' : '.')));
+  const fill = (c0, c1, r0, r1, ch) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) g[r][c] = ch; };
+  // 1. a tall plateau: bounce up onto it (paint the floor before it blue)
+  fill(13, 24, 8, 13, '#');
+  // 2. a spike pit: paint the plateau red and fly over it
+  fill(25, 33, 13, 13, '^');
+  // 3. a wall to climb (green), a ceiling to walk on (green) over a lava pool
+  fill(47, 48, 7, 13, '#');
+  fill(47, 63, 3, 3, '#');
+  fill(49, 62, 14, 15, 'L');
+  // 4. the last stretch: monsters and one more wall to bounce over
+  fill(82, 83, 9, 13, '#');
+  g[13][3] = 'P'; g[13][91] = 'F';
+  return {
+    name: 'Eraser Chase', big: true, test: true, colors: [BLUE, RED, GREEN],
+    hint: 'The Eraser is coming! Run, paint and escape before he rubs you out!',
+    chase: { start: -3, delay: 240, speed: 1.3 },
+    cans: [[20, 6], [56, 4], [82, 6]],
+    monsters: [{ type: 'inky', c: 70, r: 13, dir: -1 }, { type: 'inky', c: 76, r: 13, dir: 1 }],
+    map: g.map((row) => row.join('')),
+  };
+})();
+
 const LEVELS = LEVEL_ORDER.map((name) => {
   const def = LEVEL_DEFS.find((d) => d.name === name);
   if (!def) throw new Error(`Unknown level in LEVEL_ORDER: ${name}`);
   return def;
 });
 
+// the test level joins the list only when asked for (index.html#wow)
+if (typeof location !== 'undefined' && /wow/.test(location.hash)) LEVELS.push(WOW_LEVEL);
+
 if (typeof module !== 'undefined') {
-  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE };
+  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE, WOW_LEVEL };
 }

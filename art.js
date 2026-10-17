@@ -199,12 +199,13 @@ const ART = (() => {
   function drawTiles(ctx, w, t, colorHex) {
     const lv = w.level;
     const solid = (c, r) => w.solid(c, r);
+    const ROWS = lv.rows, COLS = lv.cols;
     const pAt = (c, r) => (r >= 0 && r < ROWS && c >= 0 && c < COLS ? lv.paint[r][c] : 0);
     // all plain blocks share one ink texture
     ctx.save(); ctx.beginPath();
     let any = false;
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (lv.tiles[r][c] === '#' && !lv.paint[r][c]) { ctx.rect(c * T - 0.5, r * T - 0.5, T + 1, T + 1); any = true; }
-    if (any) { ctx.clip(); ctx.fillStyle = inkPattern(ctx); ctx.fillRect(0, 0, W, H); }
+    if (any) { ctx.clip(); ctx.fillStyle = inkPattern(ctx); ctx.fillRect(0, 0, lv.w, lv.h); }
     ctx.restore();
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       const tl = lv.tiles[r][c], x = c * T, y = r * T;
@@ -258,6 +259,7 @@ const ART = (() => {
       if (!solid(c - 1, r)) inkLine(ctx, x, y - 1, x, y + T + 1, sd + 2, amp, 2.5, t);
       if (!solid(c + 1, r)) inkLine(ctx, x + T, y - 1, x + T, y + T + 1, sd + 3, amp, 2.5, t);
     }
+    if (opts.livingPaint) livingPaint(ctx, w, t, colorHex);
     // spikes: inked teeth
     for (const s of lv.spikes) {
       const x = s.c * T, y = s.r * T;
@@ -271,6 +273,98 @@ const ART = (() => {
         if (s.dir === 'left') { ctx.moveTo(x + T, y + a); ctx.lineTo(x + 7, y + m + lean); ctx.lineTo(x + T, y + b); }
       }
       ctx.fill(); ctx.stroke();
+    }
+  }
+
+  // ---------------- living paint ----------------
+  // Each color becomes a material: blue jelly that wobbles when you land on it, green that grows
+  // grass and vines, red that glows hot and throws sparks, yellow that sparkles.
+  const jelly = new Map();   // "c,r" -> wobble energy (from bounces and landings)
+  const grown = new Map();   // "c,r,color" -> when that paint appeared (things grow from then)
+  function poke(x, y, k = 1) {
+    const c = Math.floor(x / T), r = Math.floor((y + 4) / T);
+    for (let dc = -2; dc <= 2; dc++) {
+      const key = `${c + dc},${r}`;
+      jelly.set(key, Math.min(1.6, (jelly.get(key) || 0) + k * (1 - Math.abs(dc) * 0.3)));
+    }
+  }
+  function livingPaint(ctx, w, t, colorHex) {
+    const lv = w.level, open = (c, r) => !w.solid(c, r);
+    const now = performance.now();
+    for (let r = 0; r < lv.rows; r++) for (let c = 0; c < lv.cols; c++) {
+      const col = lv.paint[r][c];
+      if (!col || lv.tiles[r][c] !== '#') continue;
+      const x = c * T, y = r * T, hex = colorHex[col], key = `${c},${r},${col}`;
+      if (!grown.has(key)) grown.set(key, now);
+      const age = Math.min(1, (now - grown.get(key)) / 700), h1 = hash(c, r), h2 = hash(r + 3, c);
+      if (col === 1) {                                   // BLUE: jelly
+        const jk = `${c},${r}`, e = jelly.get(jk) || 0;
+        if (e > 0.01) jelly.set(jk, e * 0.93); else jelly.delete(jk);
+        if (open(c, r - 1)) {
+          const amp = 1.2 + e * 7;
+          ctx.fillStyle = hex; ctx.beginPath(); ctx.moveTo(x - 0.5, y + 3);
+          for (let i = 0; i <= 8; i++) { const X = x + i * T / 8; ctx.lineTo(X, y + 1 - Math.abs(Math.sin(t * 9 + X * 0.25)) * amp - Math.sin(t * 2 + X * 0.1) * 0.8); }
+          ctx.lineTo(x + T + 0.5, y + 3); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
+          ctx.beginPath(); ctx.ellipse(x + 8 + ((t * 10 + h1 * 30) % (T - 14)), y + 4, 4, 1.4, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';           // bubbles drifting up inside
+        for (let k = 0; k < 2; k++) {
+          const p = (t * 0.25 + h1 + k * 0.5) % 1;
+          ctx.beginPath(); ctx.arc(x + 6 + hash(c + k, r) * (T - 12), y + T - 4 - p * (T - 8), 1.2 + k * 0.8, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (col === 3) {                            // GREEN: grass on top, vines underneath, leaves on the sides
+        const sway = Math.sin(t * 2 + c * 0.7) * 2;
+        ctx.strokeStyle = '#13a14f'; ctx.lineCap = 'round'; ctx.lineWidth = 1.6;
+        if (open(c, r - 1)) {
+          for (let k = 0; k < 5; k++) {
+            const bx = x + 3 + k * 6.5 + h1 * 2, hgt = (5 + hash(c * 5 + k, r) * 7) * age;
+            ctx.beginPath(); ctx.moveTo(bx, y); ctx.quadraticCurveTo(bx + sway * 0.5, y - hgt * 0.6, bx + sway, y - hgt); ctx.stroke();
+          }
+          if (h2 > 0.55 && age > 0.6) {                    // a little flower
+            ctx.fillStyle = ['#ffc93c', '#ff3b4e', '#fff'][Math.floor(h1 * 3)];
+            ctx.beginPath(); ctx.arc(x + 16 + sway, y - 10 * age, 2.4, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+        if (open(c, r + 1)) {
+          for (let k = 0; k < 2; k++) {
+            const vx = x + 7 + k * 16 + h2 * 4, len = (8 + hash(c, r * 3 + k) * 16) * age, s2 = Math.sin(t * 1.6 + c + k) * 3;
+            ctx.beginPath(); ctx.moveTo(vx, y + T); ctx.quadraticCurveTo(vx + s2, y + T + len * 0.5, vx + s2 * 0.6, y + T + len); ctx.stroke();
+            ctx.fillStyle = '#1fc160'; ctx.beginPath(); ctx.ellipse(vx + s2 * 0.6 + 2.5, y + T + len - 2, 3.2, 1.6, 0.6, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+        for (const side of [-1, 1]) {
+          if (!open(c + side, r)) continue;
+          const lx = side < 0 ? x : x + T;
+          for (let k = 0; k < 2; k++) {
+            const ly = y + 8 + k * 14 + h1 * 4;
+            ctx.fillStyle = '#1fc160'; ctx.beginPath(); ctx.ellipse(lx + side * 3 * age, ly + Math.sin(t * 2 + k) * 1, 3.4 * age, 1.6 * age, side * 0.5, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+      } else if (col === 2) {                            // RED: hot - a glow, sparks, heat haze
+        if (open(c, r - 1)) {
+          const f = 0.75 + 0.25 * Math.sin(t * 7 + c * 1.3);
+          const g = ctx.createLinearGradient(0, y - 22, 0, y + 2);
+          g.addColorStop(0, 'rgba(255,90,40,0)'); g.addColorStop(1, `rgba(255,120,40,${0.32 * f})`);
+          ctx.fillStyle = g; ctx.fillRect(x, y - 22, T, 24);
+          for (let k = 0; k < 2; k++) {
+            const p = (t * 0.9 + h1 + k * 0.5) % 1;
+            ctx.globalAlpha = 1 - p; ctx.fillStyle = k ? '#ffd23f' : '#ff7a1a';
+            ctx.beginPath(); ctx.arc(x + 6 + hash(c, k + r) * (T - 12) + Math.sin(p * 8 + c) * 3, y - p * 30, 1.4, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = 'rgba(255,140,80,0.18)'; ctx.lineWidth = 1;
+          ctx.beginPath(); for (let s2 = 0; s2 <= 18; s2 += 3) ctx.lineTo(x + 16 + Math.sin(s2 * 0.4 + t * 6 + c) * 2.5, y - 4 - s2); ctx.stroke();
+        }
+      } else if (col === 4) {                            // YELLOW: sparkles and a soft glow
+        for (let k = 0; k < 2; k++) {
+          const p = (t * 0.7 + hash(c * 3 + k, r)) % 1, a = Math.sin(p * Math.PI);
+          const sx = x + 5 + hash(c + k * 7, r) * (T - 10), sy = y + 5 + hash(r + k * 5, c) * (T - 10) - (open(c, r - 1) && k ? 14 : 0), z = 2 + a * 3;
+          ctx.fillStyle = `rgba(255,255,255,${0.9 * a})`;
+          ctx.beginPath(); ctx.moveTo(sx, sy - z); ctx.lineTo(sx + z * 0.3, sy); ctx.lineTo(sx, sy + z); ctx.lineTo(sx - z * 0.3, sy); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(sx - z, sy); ctx.lineTo(sx, sy + z * 0.3); ctx.lineTo(sx + z, sy); ctx.lineTo(sx, sy - z * 0.3); ctx.closePath(); ctx.fill();
+        }
+      }
     }
   }
 
@@ -375,17 +469,24 @@ const ART = (() => {
   // the sketch in layers, for living/parallax backgrounds (cached per level)
   const M = 28;                                   // spare margin around each layer, for the parallax shift
   const scenes = new Map();
-  function scene(levelName, levelIdx) {
+  // How far the drawing behind a wide level scrolls compared with the level (far, mid): depth.
+  const SCROLL = [0.12, 0.24];
+  function scene(levelName, levelIdx, levelW = W) {
     if (scenes.has(levelName)) return scenes.get(levelName);
     textures();
-    const mk = () => { const c = off(W + 2 * M, H + 2 * M), g = c.getContext('2d'); g.translate(M, M); return { c, g }; };
+    // a wide level gets a wider drawing: several sketches side by side, each a bit different
+    const lw = W + Math.ceil(Math.max(0, levelW - W) * SCROLL[1]), panels = Math.ceil(lw / W);
+    const mk = () => { const c = off(lw + 2 * M, H + 2 * M), g = c.getContext('2d'); return { c, g }; };
     const far = mk(), mid = mk(), still = mk();
     const base = off(W, H), bg = base.getContext('2d');
     bg.fillStyle = PAPER; bg.fillRect(0, 0, W, H);
     const seed = [...levelName].reduce((n, ch) => n * 31 + ch.charCodeAt(0), 7) >>> 0;
     const anims = [];
     const theme = Math.min(5, Math.floor(levelIdx / 8));
-    sketchWorld((layer) => (layer === 'far' ? far.g : layer === 'mid' ? mid.g : still.g), theme, seeded(seed), (it) => anims.push(it));
+    for (let k = 0; k < panels; k++) {
+      for (const L of [far, mid, still]) { L.g.setTransform(1, 0, 0, 1, M + k * W, M); }
+      sketchWorld((layer) => (layer === 'far' ? far.g : layer === 'mid' ? mid.g : still.g), theme, seeded(seed + k * 7919), (it) => anims.push({ ...it, ox: k * W }));
+    }
     const grainPat = bg.createPattern(grain, 'repeat');
     const sc = { base, far: far.c, mid: mid.c, still: still.c, anims, theme, grainPat };
     scenes.set(levelName, sc);
@@ -398,8 +499,9 @@ const ART = (() => {
 
   // things that move in the drawing (pencil style)
   function drawAnims(g, sc, t, dx, dy) {
-    g.save(); g.translate(dx, dy); g.lineCap = 'round'; g.lineJoin = 'round';
+    g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
     for (const it of sc.anims) {
+      g.restore(); g.save(); g.translate(dx + (it.ox || 0), dy);
       if (it.kind === 'cloud') {
         const span = W + 220, x = ((it.x + t * (7 + it.s * 4) + 110) % span + span) % span - 110;
         cloudShape(g, x, it.y + Math.sin(t * 0.3 + it.x) * 2, it.s);
@@ -453,11 +555,11 @@ const ART = (() => {
 
   // ---- color soaking into the paper ----
   // (canvases made on first use: W and H come from world.js, which loads after this file)
-  let bleed, bleedG, live, liveG, tint, tintG, mask, maskG;
-  function buffers() {
-    if (bleed) return;
-    const mk = () => { const c = off(W, H); return [c, c.getContext('2d')]; };
-    [bleed, bleedG] = mk(); [live, liveG] = mk(); [tint, tintG] = mk(); [mask, maskG] = mk();
+  let bleed, bleedG, live, liveG;
+  function buffers(w = W, h = H) {
+    if (bleed && bleed.width === w && bleed.height === h) return;
+    const mk = () => { const c = off(w, h); return [c, c.getContext('2d')]; };
+    [bleed, bleedG] = mk(); [live, liveG] = mk();
   }
   let blooms = [];
   const rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
@@ -503,10 +605,10 @@ const ART = (() => {
     if (opts.color === 'off') return;
     blooms.push({ x, y, col, along, r: (14 + Math.random() * 6) * size, seed: Math.floor(Math.random() * 1000), born: performance.now(), dur: 500 + size * 300, strength: 0.85 });
   }
-  function resetLevel() { if (bleed) bleedG.clearRect(0, 0, W, H); blooms = []; }
+  // a new level (w x h pixels): fresh paper, nothing soaked in yet
+  function resetLevel(w = W, h = H) { buffers(w, h); bleedG.clearRect(0, 0, w, h); blooms = []; jelly.clear(); grown.clear(); }
   // the bleed layer this frame: settled blooms, plus the ones still spreading
   function bleedNow() {
-    buffers();
     const now = performance.now();
     blooms = blooms.filter((b) => {
       const k = (now - b.born) / b.dur;
@@ -514,44 +616,33 @@ const ART = (() => {
       return true;
     });
     if (!blooms.length) return bleed;
-    liveG.clearRect(0, 0, W, H); liveG.drawImage(bleed, 0, 0);
+    liveG.clearRect(0, 0, live.width, live.height); liveG.drawImage(bleed, 0, 0);
     for (const b of blooms) { const k = (now - b.born) / b.dur; if (k > 0) paintBloom(liveG, b, k); }
     return live;
   }
 
   // the whole background for the lab looks: paper, sketch (moving or still), soaked-in color, grain
-  function drawScene(ctx, levelName, levelIdx, t) {
-    const sc = scene(levelName, levelIdx);
+  // the background: paper and the pencil drawing (moving, with parallax depth). Screen space.
+  // scrollX: how far a wide level's camera has moved (0 for one-screen levels).
+  function drawScene(ctx, levelName, levelIdx, t, scrollX = 0, levelW = W) {
+    const sc = scene(levelName, levelIdx, levelW);
     cam.x += (cam.tx - cam.x) * 0.06; cam.y += (cam.ty - cam.y) * 0.06;
     const px = opts.parallax ? (W / 2 - cam.x) : 0, py = opts.parallax ? (H / 2 - cam.y) : 0;
-    const far = [px * 0.022, py * 0.012], mid = [px * 0.05, py * 0.025];
+    const far = [px * 0.022 - scrollX * SCROLL[0], py * 0.012], mid = [px * 0.05 - scrollX * SCROLL[1], py * 0.025];
     ctx.drawImage(sc.base, 0, 0);
-    const tl = opts.living ? t : 0;
-    const drawSketch = (g) => {
-      g.drawImage(sc.far, -M + far[0], -M + far[1]);
-      g.drawImage(sc.mid, -M + mid[0], -M + mid[1]);
-      if (opts.living) drawAnims(g, sc, tl, mid[0] * 0.6, mid[1] * 0.6);
-      else g.drawImage(sc.still, -M + mid[0] * 0.6, -M + mid[1] * 0.6);
-    };
-    drawSketch(ctx);
-    if (opts.color !== 'off') {
-      const b = bleedNow();
-      ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(b, 0, 0); ctx.restore();
-      if (opts.color === 'sketch') {
-        // the pencil lines take the color of the paint around them
-        // (the faint pencil, drawn a few times over, makes a mask strong enough to carry color)
-        maskG.clearRect(0, 0, W, H);
-        for (let i = 0; i < 4; i++) drawSketch(maskG);
-        tintG.globalCompositeOperation = 'source-over'; tintG.clearRect(0, 0, W, H);
-        for (let i = 0; i < 4; i++) tintG.drawImage(b, 0, 0);
-        tintG.globalCompositeOperation = 'destination-in';
-        tintG.drawImage(mask, 0, 0);
-        ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 1; ctx.drawImage(tint, 0, 0); ctx.restore();
-      }
-    }
+    ctx.drawImage(sc.far, -M + far[0], -M + far[1]);
+    ctx.drawImage(sc.mid, -M + mid[0], -M + mid[1]);
+    if (opts.living) drawAnims(ctx, sc, t, mid[0] * 0.6 - scrollX * SCROLL[1] * 0.4, mid[1] * 0.6);
+    else ctx.drawImage(sc.still, -M + mid[0] * 0.6 - scrollX * SCROLL[1] * 0.4, -M + mid[1] * 0.6);
     ctx.fillStyle = sc.grainPat; ctx.fillRect(0, 0, W, H);
+  }
+  // the paint soaked into the paper around painted surfaces. Level space (under the walls).
+  function drawBleed(ctx) {
+    if (opts.color === 'off' || !bleed) return;
+    const b = bleedNow();
+    ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(b, 0, 0); ctx.restore();
   }
 
   return { inkPattern, paper, plainPaper, inkLine, drawTiles, drawLava, makeStain, drawStains, shadow, vignette,
-    opts, layered, drawScene, setCamera, bloom, resetLevel };
+    opts, layered, drawScene, drawBleed, setCamera, bloom, resetLevel, poke };
 })();

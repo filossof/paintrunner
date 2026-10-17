@@ -30,7 +30,9 @@ const STUN_TIME = 180, SHOT_COOLDOWN = 150, SHOT_WARNING = 30;
 const TINY = 0.55;   // a monster shrunk by yellow paint (it can't hurt a full-size player, but can still hurt a small one)
 
 function parseLevel(def) {
-  if (def.map.length !== ROWS) throw new Error(`${def.name}: expected ${ROWS} rows, got ${def.map.length}`);
+  // Most levels are one screen (COLS x ROWS); a level may also be wider or taller, with a camera.
+  const ROWS = def.map.length, COLS = def.map[0].length;
+  if (!def.big && (ROWS !== 17 || COLS !== 30)) throw new Error(`${def.name}: expected 30 x 17, got ${COLS} x ${ROWS}`);
   const tiles = [], paint = [];
   let spawn = null, flag = null;
   def.map.forEach((row, r) => {
@@ -78,7 +80,7 @@ function parseLevel(def) {
     if (solidAt(m.c, m.r)) throw new Error(`${def.name}: monster at ${m.c},${m.r} is inside a wall`);
   }
   return { name: def.name, hint: def.hint, colors: def.colors, tiles, paint, spawn, flag, spikes, lava, platforms, cans,
-    monsterDefs: def.monsters || [] };
+    monsterDefs: def.monsters || [], cols: COLS, rows: ROWS, w: COLS * T, h: ROWS * T, chase: def.chase || null };
 }
 
 function approach(v, target, step) {
@@ -150,12 +152,12 @@ class World {
 
   // ---- tile helpers ----
   tile(c, r) {
-    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return 'M';
+    if (r < 0 || r >= this.level.rows || c < 0 || c >= this.level.cols) return 'M';
     return this.level.tiles[r][c];
   }
   solid(c, r) { const t = this.tile(c, r); return t === '#' || t === 'M'; }
   colorAt(c, r) {
-    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return NONE;
+    if (r < 0 || r >= this.level.rows || c < 0 || c >= this.level.cols) return NONE;
     return this.level.paint[r][c];
   }
   setPaint(c, r, color) {
@@ -325,7 +327,7 @@ class World {
         b.vy += BLOB_G / 3;
         const nx = b.x + b.vx / 3, ny = b.y + b.vy / 3;
         const c = Math.floor(nx / T), r = Math.floor(ny / T);
-        if (c < 0 || c >= COLS || r < 0 || r >= ROWS) { done = true; break; }
+        if (c < 0 || c >= this.level.cols || r < 0 || r >= this.level.rows) { done = true; break; }
         const inside = (o) => nx >= o.x && nx <= o.x + o.w && ny >= o.y && ny <= o.y + o.h;
         const plat = this.platforms.find(inside);
         const t = this.tile(c, r);
@@ -545,7 +547,7 @@ class World {
       }
 
       // monsters die on spikes, in lava, or falling out of the world
-      if (m.y > H) m.alive = false;
+      if (m.y > this.level.h) m.alive = false;
       if (this.inLava(m)) {
         m.alive = false;
         this.events.push({ type: 'monsterDie', x: m.x + m.w / 2, y: m.y + m.h / 2, cause: 'lava', afterPortal: m.tpTick !== undefined && this.tick - m.tpTick < 180 });
@@ -743,7 +745,20 @@ class World {
     if (!p.grounded) p.groundColor = NONE;
   }
 
+  // The Eraser chase (levels with `chase`): from `delay` frames in, the Eraser rubs the level out
+  // from the left at `speed` pixels a frame. Anything it reaches is gone - you included.
+  chaseX() {
+    const ch = this.level.chase;
+    if (!ch) return -Infinity;
+    return (ch.start || -2) * T + Math.max(0, this.frame - (ch.delay || 120)) * ch.speed;
+  }
+
   checkHazards() {
+    if (this.level.chase) {
+      const ex = this.chaseX(), p = this.player;
+      for (const m of this.monsters) if (m.alive && m.x + m.w < ex) m.alive = false;
+      if (p.x + p.w * 0.3 < ex) { this.die('erased'); return; }
+    }
     if (this.state !== 'play') return;
     const p = this.player;
     for (const s of this.level.spikes) {
@@ -756,7 +771,7 @@ class World {
       }[s.dir];
       if (overlap(p.x, p.y, p.w, p.h, ...box)) { this.die('spikes'); return; }
     }
-    if (p.y > H + 40 || p.y < -80) { this.die(); return; }
+    if (p.y > this.level.h + 40 || p.y < -80) { this.die(); return; }
     if (this.inLava(p)) { this.die('lava'); return; }
 
     for (const m of this.monsters) {

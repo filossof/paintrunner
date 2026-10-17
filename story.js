@@ -467,5 +467,5 @@ const Story = (() => {
     raf = requestAnimationFrame(frame);
   }
 
-  return { play, get playing() { return !!el; } };
+  return { play, get playing() { return !!el; }, drawEraser: eraser };
 })();

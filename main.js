@@ -297,7 +297,7 @@
     const aiming = firing || [...touches.values()].some((t) => t.role === 'raim' && t.moved);
     if (aiming) {
       const p = w.player, a = aimAngle !== null ? aimAngle : (p.face > 0 ? -0.35 : Math.PI + 0.35);
-      mouse.x = p.x + p.w / 2 + Math.cos(a) * 300; mouse.y = p.y + p.h * 0.25 + Math.sin(a) * 300;
+      [mouse.x, mouse.y] = toScreen(p.x + p.w / 2 + Math.cos(a) * 300, p.y + p.h * 0.25 + Math.sin(a) * 300);
     }
     if (firing) holdFire(true);
     else if (stickFiring && ![...touches.values()].some((t) => t.role === 'aim')) holdFire(false);
@@ -508,7 +508,8 @@
     game.world = new World(LEVELS[i]);
     game.mode = 'play';
     Ghost.resetRecording(); Ghost.record(game.world);
-    ART.resetLevel();
+    ART.resetLevel(game.world.level.w, game.world.level.h);
+    stepCamera(game.world, true);
     loadGhost(i);
     game.color = LEVELS[i].colors[0];
     game.runStomps = 0;
@@ -542,7 +543,7 @@
     for (const ev of world.events) {
       switch (ev.type) {
         case 'jump': sfx.jump(); squash = 1.25; puff(ev.x, ev.y, 3, 0.7); break;
-        case 'bounce': sfx.bounce(); squash = 1.4; burst(ev.x, ev.y, COLOR_HEX[BLUE], 10, 3, 3); break;
+        case 'bounce': sfx.bounce(); squash = 1.4; burst(ev.x, ev.y, COLOR_HEX[BLUE], 10, 3, 3); ART.poke(ev.x, ev.y, 1.2); cam.punch = Math.max(cam.punch, 0.05); break;
         case 'throw': sfx.throw(); hero.recoil = 1; break;
         case 'splat':
           if (ev.color && !ev.quiet) {                     // paint splatter stays on the paper for the whole level
@@ -562,6 +563,7 @@
           const k = Math.min(1, (ev.v - 4) / 9);
           squash = 0.82 - k * 0.22;
           puff(ev.x, ev.y, 3 + Math.round(k * 6), 0.8 + k * 0.8);
+          ART.poke(ev.x, ev.y, 0.5 + k);
           if (ev.v >= MAX_FALL - 0.5) hero.dizzy = 1.2;
           break;
         }
@@ -576,7 +578,7 @@
           break;
         case 'sizzle': sfx.sizzle(); burst(ev.x, ev.y, '#bbb', 8, 2, 4); burst(ev.x, ev.y, '#ff8c1a', 5, 2.5, 2); break;
         case 'respawn': sfx.respawn(); break;
-        case 'stomp': game.runStomps++; sfx.stomp(); squash = 1.3; game.shake = 4; burst(ev.x, ev.y, INK, 18, 5, 4); break;
+        case 'stomp': game.runStomps++; sfx.stomp(); squash = 1.3; game.shake = 4; burst(ev.x, ev.y, INK, 18, 5, 4); if (WOW) game.hitstop = 5; break;
         case 'monsterDie':
           if (ev.cause === 'lava') { sfx.sizzle(); burst(ev.x, ev.y, '#ff8c1a', 16, 4, 4); }
           else { sfx.stomp(); burst(ev.x, ev.y, INK, 14, 4, 4); }
@@ -651,7 +653,7 @@
   const online = () => typeof Cloud !== 'undefined' && Cloud.available;
 
   function postResult(result, completed, ghost) {
-    if (!online()) { result.cloud = null; return; }
+    if (!online() || LEVELS[game.levelIdx].test) { result.cloud = null; return; }   // (test levels stay off the boards)
     const lv = LEVELS[game.levelIdx];
     const run = { level: lv.name, levelIdx: game.levelIdx, completed, time: result.time, stars: result.stars, throws: result.throws, deaths: result.deaths, played: game.world ? game.world.playFrames / 60 : result.time };
     Cloud.logRun(run).catch((e) => console.warn('logRun', e.code || e));   // guests too, for the stats
@@ -954,6 +956,11 @@
 
     if (tapped('KeyM')) showToast(Sound.toggleMusic() ? '♪ Music on' : '♪ Music off');
     if (tapped('KeyF')) toggleFullscreen();
+    if (WOW && tapped('KeyZ')) {
+      cam.zoomSmall = !cam.zoomSmall;
+      if (game.world) stepCamera(game.world, true);
+      showToast(cam.zoomSmall ? '🎥 Zoom camera on' : '🎥 Zoom camera off');
+    }
     if (tapped('KeyG')) {
       const next = Ghost.MODES[(Ghost.MODES.indexOf(Ghost.mode) + 1) % Ghost.MODES.length];
       setGhostMode(next);
@@ -1024,9 +1031,12 @@
 
       if (touchMode) stickFire(w);
       const wash = mouse.right || (mouse.down && held('ShiftLeft', 'ShiftRight'));
-      if (mouse.down || mouse.right) w.throwPaint(mouse.x, mouse.y, wash ? NONE : game.color);
+      if (mouse.down || mouse.right) { const [ax, ay] = toWorld(mouse.x, mouse.y); w.throwPaint(ax, ay, wash ? NONE : game.color); }
 
+      // a stomp freezes the action for a split second (hit-stop)
+      if (game.hitstop > 0) { game.hitstop--; pressed.clear(); return; }
       w.step(inp);
+      stepCamera(w);
       Ghost.record(w);
       if (w.state === 'play' && w.player.cling === 2) { if (++ceilingFrames >= 300) Achievements.unlock('spider-painter'); } else ceilingFrames = 0;
       if (!document.hidden) {
@@ -1102,11 +1112,58 @@
 
   function drawBackground() {
     if (game.world && ART.layered()) {
-      const p = game.world.player;
-      ART.setCamera(p.x + p.w / 2, p.y + p.h / 2);
-      ART.drawScene(ctx, LEVELS[game.levelIdx].name, game.levelIdx, game.tick / 60);
+      const p = game.world.player, [sx, sy] = toScreen(p.x + p.w / 2, p.y + p.h / 2);
+      ART.setCamera(sx, sy);
+      ART.drawScene(ctx, LEVELS[game.levelIdx].name, game.levelIdx, game.tick / 60, cam.on ? cam.x : 0, game.world.level.w);
     } else ctx.drawImage(game.world ? ART.paper(LEVELS[game.levelIdx].name, game.levelIdx) : ART.plainPaper(), 0, 0);
-    ART.drawStains(ctx, stains);
+  }
+
+  // ---------- the camera ----------
+  // One-screen levels sit still (unless the zoom camera is on); wider levels follow you, looking a
+  // little ahead in the direction you run, and punch in a touch on big bounces.
+  const WOW = /wow/.test(location.hash);
+  const cam = { x: 0, y: 0, z: 1, cx: W / 2, cy: H / 2, punch: 0, on: false, zoomSmall: false };
+  function stepCamera(w, snap) {
+    const lv = w.level, big = lv.w > W || lv.h > H;
+    cam.on = big || cam.zoomSmall;
+    if (!cam.on) { cam.x = 0; cam.y = 0; cam.z = 1; return; }
+    const p = w.player;
+    cam.punch *= 0.9;
+    cam.z = (big ? 1.08 : 1.18) + cam.punch;
+    const ahead = Math.max(-1, Math.min(1, p.vx / RUN)) * 80 + p.face * 24;
+    const tx = p.x + p.w / 2 + ahead, ty = p.y + p.h / 2 - 16;
+    if (snap) { cam.cx = tx; cam.cy = ty; } else { cam.cx += (tx - cam.cx) * 0.08; cam.cy += (ty - cam.cy) * 0.07; }
+    const vw = W / cam.z, vh = H / cam.z;
+    cam.x = Math.max(0, Math.min(lv.w - vw, cam.cx - vw / 2));
+    cam.y = Math.max(0, Math.min(lv.h - vh, cam.cy - vh / 2));
+  }
+  const toWorld = (sx, sy) => (cam.on ? [sx / cam.z + cam.x, sy / cam.z + cam.y] : [sx, sy]);
+  const toScreen = (wx, wy) => (cam.on ? [(wx - cam.x) * cam.z, (wy - cam.y) * cam.z] : [wx, wy]);
+
+  // The Eraser chase: everything behind him is rubbed out to blank paper.
+  function drawChase(w) {
+    if (!w.level.chase) return;
+    const ex = w.chaseX(), t = game.tick / 60;
+    if (ex < -T) return;
+    const top = cam.on ? cam.y : 0, bottom = top + H / cam.z;
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(-10, top - 10);
+    for (let y = top - 10; y <= bottom + 10; y += 14) ctx.lineTo(ex + Math.sin(y * 0.07 + t * 5) * 7, y);
+    ctx.lineTo(-10, bottom + 10); ctx.closePath();
+    ctx.fillStyle = PAPER; ctx.fill();
+    ctx.clip();
+    ctx.drawImage(ART.plainPaper(), Math.floor(ex / W) * W, top); ctx.drawImage(ART.plainPaper(), Math.floor(ex / W) * W - W, top);
+    ctx.fillStyle = 'rgba(150,140,140,0.35)';
+    for (let i = 0; i < 26; i++) {                       // crumbs and gray smears left behind
+      const cx = ex - 20 - hash(i, Math.floor(ex / 40)) * 260, cy = top + hash(i, 9) * (bottom - top);
+      ctx.beginPath(); ctx.ellipse(cx, cy, 2 + hash(i, 3) * 3, 1.5, hash(i, 4) * 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+    // the Eraser himself, rubbing away at the edge
+    if (typeof Story !== 'undefined' && Story.drawEraser) {
+      const ey = Math.max(top + 90, Math.min(bottom - 80, w.player.y + 10)) + Math.sin(t * 9) * 14;
+      Story.drawEraser(ctx, ex - 20, ey, 1.05, t, 'grumpy');
+    }
   }
   const drawTiles = (w) => ART.drawTiles(ctx, w, game.tick / 60, COLOR_HEX);
   const drawLava = (w) => ART.drawLava(ctx, w, game.tick / 60);
@@ -1453,7 +1510,7 @@
     if (w.state !== 'play') return;
     // trajectory preview: same maths as the real blob
     let x = p.x + p.w / 2, y = p.y + p.h * 0.25;
-    const dx = mouse.x - x, dy = mouse.y - y, d = Math.hypot(dx, dy) || 1;
+    const [mx, my] = toWorld(mouse.x, mouse.y), dx = mx - x, dy = my - y, d = Math.hypot(dx, dy) || 1;
     let vx = dx / d * BLOB_SPEED, vy = dy / d * BLOB_SPEED;
     ctx.fillStyle = washing() ? '#ffffff' : COLOR_HEX[game.color];
     for (let i = 0; i < 40; i++) {
@@ -1535,6 +1592,10 @@
 
   function drawWorld(w) {
     drawBackground();
+    ctx.save();
+    if (cam.on) { ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y); }
+    ART.drawBleed(ctx);
+    ART.drawStains(ctx, stains);
     drawTiles(w);
     drawLava(w);
     drawPlatforms(w);
@@ -1549,8 +1610,22 @@
     drawPlayer(w);
     SHOP.drawBurst(ctx, pops, look().pop);
     drawParticles();
-    ART.vignette(ctx);
+    drawChase(w);
     if (!touchMode || touchAim()) drawAim(w);
+    ctx.restore();
+    ART.vignette(ctx);
+    if (w.level.chase) drawChaseWarning(w);
+  }
+  // when the Eraser is off screen: a pulsing warning at the left edge, with how close he is
+  function drawChaseWarning(w) {
+    const ex = w.chaseX(), gap = (w.player.x - ex) / T;
+    const [sx] = toScreen(ex, 0);
+    if (sx > 0 || w.state !== 'play') return;
+    const a = 0.55 + 0.35 * Math.sin(game.tick * (gap < 12 ? 0.35 : 0.15));
+    const g = ctx.createLinearGradient(0, 0, 70, 0);
+    g.addColorStop(0, `rgba(255,59,78,${0.45 * a})`); g.addColorStop(1, 'rgba(255,59,78,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 30, 70, H - 60);
+    text(`◀ Eraser ${Math.max(0, Math.round(gap))}`, 12, H / 2, 15, `rgba(255,255,255,${0.6 + 0.4 * a})`, 'left', 900);
   }
 
   function splotch(x, y, r, color, seed) {
@@ -1788,6 +1863,18 @@
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
   window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
 
+  // ---------- the WOW test (index.html#wow) ----------
+  // Living paint everywhere, the Eraser Chase level straight away, and Z for the zoom camera on
+  // one-screen levels.
+  if (WOW) {
+    ART.opts.livingPaint = true;
+    const wait = setInterval(() => {
+      if (document.getElementById('splash')) return;
+      clearInterval(wait);
+      if (game.mode === 'title') play(LEVELS.length - 1);
+    }, 150);
+  }
+
   // ---------- the story ----------
   // The opening comic plays once for every player, right after the "tap to start" screen.
   // (index.html#story / #ending play a scene on demand; links straight to a level skip it.)
@@ -1797,7 +1884,7 @@
     Story.play(which, () => { keys.clear(); pressed.clear(); mouse.down = false; });
   }
   const storyHash = /ending/.test(location.hash) ? 'ending' : /story/.test(location.hash) ? 'intro' : null;
-  if (storyHash || (!store.get('seenIntro', false) && !/level=|nosplash/.test(location.hash))) {
+  if (storyHash || (!store.get('seenIntro', false) && !/level=|nosplash|wow/.test(location.hash))) {
     const wait = setInterval(() => {
       if (typeof Story === 'undefined' || document.getElementById('splash')) return;
       clearInterval(wait);

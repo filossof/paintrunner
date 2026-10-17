@@ -15,6 +15,8 @@ for (const [name, r] of Object.entries(results)) {
   if (!ok) bad++;
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${String(i).padStart(2)}. ${name.padEnd(20)} ${r.won ? `won, cans ${r.cans}/3` : `NOT WON: ${r.fail || 'died (' + r.died + ')'}`}`);
 }
+// the WOW test level (wider than a screen, the Eraser chasing): prints its own line
+if (!require('./wow.js').R['Eraser Chase'].won) bad++;
 const free = B.LEVELS.filter((l) => B.noPaintWin(l)).map((l) => l.name);
 console.log(free.length ? `FAIL beatable without paint: ${free.join(', ')}` : 'PASS  no level can be beaten without paint');
 process.exit(bad || free.length ? 1 : 0);
