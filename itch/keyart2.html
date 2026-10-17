@@ -1,0 +1,198 @@
+<!doctype html>
+<!-- Key art, version 2: "You have the paint". A gray sketch of the world, and one huge paint stroke
+     that brings everything it touches to color. keyart2.html (1920x1080) or keyart2.html?portrait (1080x1350). -->
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
+<body style="margin:0;background:#111"><canvas id="c" style="display:block"></canvas>
+<script src="../config.js"></script>
+<script src="../levels.js"></script><script src="../world.js"></script><script src="../art.js"></script>
+<script src="../characters.js"></script><script src="../shop.js"></script><script src="../story.js"></script>
+<script>
+const PORTRAIT = /portrait/.test(location.search);
+const OUT_W = PORTRAIT ? 1080 : 1920, OUT_H = PORTRAIT ? 1350 : 1080;
+const CW = PORTRAIT ? 540 : 960, CH = PORTRAIT ? 675 : 540;            // drawing space (drawn at 2x)
+c.width = OUT_W; c.height = OUT_H;
+let ctx = c.getContext('2d'); ctx.scale(OUT_W / CW, OUT_H / CH);
+const INK = '#1c1c1f', PAPER = '#f1ece0';
+const COL = { 1: '#2f7bff', 2: '#ff3b4e', 3: '#1fc160', 4: '#ffc93c', 5: '#9b5de5' };
+const [B, R, G, Y, P] = [COL[1], COL[2], COL[3], COL[4], COL[5]];
+const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
+
+// a watercolor splotch with flecks around it
+function splotch(x, y, r, col, seed, alpha = 1, sy = 1) {
+  const pts = []; for (let a = 0; a < 16; a++) { const ang = a / 16 * Math.PI * 2, rr = r * (0.7 + 0.3 * hash(a, seed)); pts.push([x + Math.cos(ang) * rr, y + Math.sin(ang) * rr * sy]); }
+  ctx.globalAlpha = alpha; ctx.fillStyle = col; ctx.beginPath();
+  pts.forEach(([px, py], i) => { const [nx, ny] = pts[(i + 1) % pts.length]; const mx = (px + nx) / 2, my = (py + ny) / 2; i ? ctx.quadraticCurveTo(px, py, mx, my) : ctx.moveTo(mx, my); });
+  ctx.closePath(); ctx.fill();
+  for (let k = 0; k < 7; k++) { const a = hash(k, seed) * 6.28, d = r * (1.1 + hash(seed, k) * 0.6); ctx.beginPath(); ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d * sy, 1.5 + hash(k * 3, seed) * 4, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+function pencil(pts, a = 0.45, w = 1.4) {
+  ctx.strokeStyle = `rgba(60,55,50,${a})`; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+}
+
+// ---------- a little level, drawn by the game's own tile art ----------
+// (tiles, paint and lava in a grid; the game's renderer adds the ink, jelly, vines, glow and sparkles)
+function scene(spec) {
+  const { cols, rows } = spec;
+  const tiles = Array.from({ length: rows }, () => Array(cols).fill('.'));
+  const paint = Array.from({ length: rows }, () => Array(cols).fill(0));
+  const fill = (c0, c1, r0, r1, ch) => { for (let r = r0; r <= r1; r++) for (let cc = c0; cc <= c1; cc++) tiles[r][cc] = ch; };
+  spec.build(fill, (c, r, col) => { paint[r][c] = col; });
+  const lava = [];
+  for (let r = 0; r < rows; r++) for (let cc = 0; cc < cols; cc++) if (tiles[r][cc] === 'L') lava.push({ c: cc, r, surface: r === 0 || tiles[r - 1][cc] !== 'L' });
+  const level = { tiles, paint, rows, cols, w: cols * 32, h: rows * 32, spikes: [], lava };
+  return { level, solid: (cc, r) => r < 0 || r >= rows || cc < 0 || cc >= cols ? false : tiles[r][cc] === '#' };
+}
+
+
+// ---------- the world twice: as a gray pencil sketch, and in full color ----------
+function makeLayer(color, L, S) {
+  const cv = document.createElement('canvas'); cv.width = OUT_W; cv.height = OUT_H;
+  const g = cv.getContext('2d'); g.scale(OUT_W / CW, OUT_H / CH);
+  const saved = ctx; ctx = g;                       // (the helpers draw on `ctx`)
+  ctx.drawImage(ART.plainPaper(), 0, 0, CW, CH);
+  if (color) {
+    const sky = ctx.createLinearGradient(0, 0, 0, CH * 0.7); sky.addColorStop(0, rgba(B, 0.34)); sky.addColorStop(1, rgba(B, 0.02));
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, CW, CH);
+    splotch(CW * 0.86, CH * 0.14, 52, Y, 4, 0.7);
+    [R, Y, G, B, P].forEach((col, i) => { ctx.strokeStyle = rgba(col, 0.42); ctx.lineWidth = 11; ctx.beginPath(); ctx.arc(CW * 0.58, CH * 0.9, CH * 0.6 - i * 12, Math.PI * 1.06, Math.PI * 1.94); ctx.stroke(); });
+  } else {
+    ctx.strokeStyle = 'rgba(60,55,50,0.4)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(CW * 0.86, CH * 0.14, 40, 0, 7); ctx.stroke();
+    for (const r of [CH * 0.6, CH * 0.6 - 48]) { ctx.strokeStyle = 'rgba(60,55,50,0.25)'; ctx.beginPath(); ctx.arc(CW * 0.58, CH * 0.9, r, Math.PI * 1.06, Math.PI * 1.94); ctx.stroke(); }
+  }
+  const hill = (base, amp, f, ph, col, a) => { if (color) { ctx.fillStyle = rgba(col, a); ctx.beginPath(); ctx.moveTo(0, CH); for (let x = 0; x <= CW; x += 10) ctx.lineTo(x, base - Math.sin(x * f + ph) * amp); ctx.lineTo(CW, CH); ctx.fill(); }
+    pencil(Array.from({ length: CW / 10 + 1 }, (_, i) => [i * 10, base - Math.sin(i * 10 * f + ph) * amp]), 0.45, 1.4); };
+  hill(CH * 0.55, 30, 0.007, 2, P, 0.2); hill(CH * 0.66, 20, 0.011, 4, G, 0.28);
+  // pencil trees and a windmill on the hills
+  for (const [x, h] of [[CW * 0.08, 60], [CW * 0.16, 44], [CW * 0.76, 52]]) {
+    const y = CH * 0.66 - 6;
+    if (color) splotch(x, y - h * 0.7, h * 0.35, G, x | 0, 0.55);
+    ctx.strokeStyle = 'rgba(60,55,50,0.5)'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y - h * 0.7, h * 0.35, 0, 7); ctx.stroke();
+    pencil([[x, y - h * 0.35], [x, y + 8]], 0.5, 1.6);
+  }
+  const mx = CW * 0.47, my = CH * 0.36;
+  if (color) splotch(mx, my - 6, 16, R, 9, 0.7);
+  pencil([[mx - 10, my + 80], [mx - 6, my], [mx + 6, my], [mx + 10, my + 80]], 0.5, 1.6);
+  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + 0.5; pencil([[mx, my], [mx + Math.cos(a) * 42, my + Math.sin(a) * 42]], 0.5, 1.6); }
+  // the level (ink walls; painted and alive only in the color version)
+  const sc = scene({ cols: L.cols, rows: L.rows, build: (fill, paintAt) => {
+    fill(0, L.gap[0] - 1, L.ground, L.rows - 1, '#');
+    fill(L.gap[0], L.gap[1], L.ground + 1, L.rows - 1, 'L');
+    fill(L.gap[1] + 1, L.cols - 1, L.ground, L.rows - 1, '#');
+    fill(L.pillar[0], L.pillar[1], L.pillar[2], L.ground - 1, '#');
+    fill(L.ledge[0], L.ledge[1], L.ledge[2], L.ledge[2], '#');
+    if (!color) return;
+    for (let cc = L.red[0]; cc <= L.red[1]; cc++) paintAt(cc, L.ground, 2);
+    for (let cc = L.gap[1] + 1; cc <= L.gap[1] + 4; cc++) paintAt(cc, L.ground, 1);
+    for (let r = L.pillar[2]; r < L.ground; r++) paintAt(L.pillar[0], r, 3);
+    for (let cc = L.pillar[0]; cc <= L.pillar[1]; cc++) paintAt(cc, L.pillar[2], 3);
+    for (let cc = L.ledge[0]; cc <= L.ledge[1]; cc++) paintAt(cc, L.ledge[2], 4);
+  } });
+  ctx.save(); ctx.translate(L.ox, CH - sc.level.h * S + L.oy); ctx.scale(S, S);
+  if (color) { ART.poke((L.gap[1] + 2.5) * 32, L.ground * 32, 0.3); ART.drawLava(ctx, sc, 2.35); }
+  else {   // lava in gray: just its pencil surface
+    for (const l of sc.level.lava) if (l.surface) pencil([[l.c * 32, l.r * 32 + 6], [l.c * 32 + 32, l.r * 32 + 6]], 0.5, 1.6);
+  }
+  ART.drawTiles(ctx, sc, 2.35, COL);
+  ctx.restore();
+  ctx = saved;
+  return cv;
+}
+
+// the big brushstroke: a ragged ribbon along a curve, with splashes and drips
+function strokePath(g, pts, width) {
+  const n = pts.length, left = [], right = [];
+  for (let i = 0; i < n; i++) {
+    const [x, y] = pts[i], [px, py] = pts[Math.max(0, i - 1)], [nx, ny] = pts[Math.min(n - 1, i + 1)];
+    const dx = nx - px, dy = ny - py, d = Math.hypot(dx, dy) || 1, k = i / (n - 1);
+    const w = width * (0.3 + Math.sin(k * Math.PI) * 0.8 + Math.sin(k * 23) * 0.04);
+    left.push([x - dy / d * w / 2, y + dx / d * w / 2]); right.push([x + dy / d * w / 2, y - dx / d * w / 2]);
+  }
+  g.beginPath(); left.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  right.reverse().forEach(([x, y]) => g.lineTo(x, y)); g.closePath();
+}
+
+function draw() {
+  ART.opts.livingPaint = true;
+  const S = PORTRAIT ? 1.0 : 1.32;
+  const L = PORTRAIT
+    ? { cols: 17, rows: 21, ground: 16, gap: [6, 9], red: [1, 5], pillar: [12, 13, 10], ledge: [14, 16, 7], ox: 0, oy: 4,
+        hero: [150, 519, 3.0], stroke: [[185, 440], [260, 520], [360, 520], [430, 430], [470, 330], [520, 220], [580, 130]], width: 170,
+        title: [270, 80, 70], eraser: [70, 330, 0.5] }
+    : { cols: 23, rows: 13, ground: 10, gap: [9, 12], red: [2, 8], pillar: [17, 18, 5], ledge: [19, 22, 3], ox: -12, oy: 10,
+        hero: [262, 420, 3.1], stroke: [[300, 352], [390, 380], [500, 420], [620, 380], [720, 280], [820, 170], [990, 60]], width: 230,
+        title: [300, 72, 84], eraser: [80, 300, 0.55] };
+  const gray = makeLayer(false, L, S), color = makeLayer(true, L, S);
+
+  // the sketch, then the color wherever the paint went
+  ctx.drawImage(gray, 0, 0, CW, CH);
+  // a smooth curve through the stroke's points (Catmull-Rom)
+  const pts = [], C = L.stroke, at = (i) => C[Math.max(0, Math.min(C.length - 1, i))];
+  for (let i = 0; i < C.length - 1; i++) for (let k = 0; k < 10; k++) {
+    const t = k / 10, [p0, p1, p2, p3] = [at(i - 1), at(i), at(i + 1), at(i + 2)];
+    const f = (a, b, c2, d) => 0.5 * (2 * b + (-a + c2) * t + (2 * a - 5 * b + 4 * c2 - d) * t * t + (-a + 3 * b - 3 * c2 + d) * t * t * t);
+    pts.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+  }
+  pts.push(C[C.length - 1]);
+  // (the stroke and each splash are separate shapes: overlapping them in one path would cut holes)
+  ctx.save(); strokePath(ctx, pts, L.width); ctx.clip(); ctx.drawImage(color, 0, 0, CW, CH); ctx.restore();
+  for (let i = 0; i < 18; i++) {
+    const [x, y] = pts[Math.floor(hash(i, 3) * pts.length)], a = hash(i, 4) * 6.28, d = L.width * (0.55 + hash(i, 6) * 0.5);
+    ctx.save(); ctx.beginPath(); ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, 4 + hash(i, 7) * 9, 0, 7); ctx.clip(); ctx.drawImage(color, 0, 0, CW, CH); ctx.restore();
+  }
+  // the stroke's wet edge: thin bands of every color along it
+  [R, Y, G, B, P].forEach((col, i) => {
+    ctx.save(); ctx.globalAlpha = 0.55; ctx.strokeStyle = col; ctx.lineWidth = 2.2;
+    strokePath(ctx, pts.map(([x, y]) => [x + (i - 2) * 1.5, y + (i - 2) * 1.2]), L.width * (1.0 - i * 0.02)); ctx.stroke(); ctx.restore();
+  });
+  // drips running down from the stroke
+  [[0.22, B], [0.38, R], [0.52, G], [0.67, Y], [0.8, P]].forEach(([f, col], i) => {
+    const [x, y] = pts[Math.floor(f * (pts.length - 1))], len = 18 + hash(i, 2) * 26, y0 = y + L.width * 0.38 * Math.sin(f * Math.PI);
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x - 4, y0); ctx.quadraticCurveTo(x - 2, y0 + len * 0.6, x - 3, y0 + len); ctx.arc(x, y0 + len, 3.6, Math.PI, 0, true); ctx.quadraticCurveTo(x + 2, y0 + len * 0.6, x + 4, y0); ctx.fill();
+  });
+
+  // the Eraser, small, in the gray distance... he's coming
+  const [erx, ery, ers] = L.eraser;
+  for (let i = 0; i < 14; i++) { ctx.fillStyle = 'rgba(220,170,180,0.8)'; ctx.beginPath(); ctx.arc(erx + 40 + hash(i, 1) * 50, ery - 30 + hash(i, 2) * 60, 1.5 + hash(i, 3) * 2.5, 0, 7); ctx.fill(); }
+  Story.drawEraser(ctx, erx, ery, ers, 0.06, 'grumpy');
+
+  // the hero, running, arm thrown back from the throw
+  const [hx, hy, hs] = L.hero;
+  ctx.strokeStyle = 'rgba(28,28,31,0.32)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  for (let i = 0; i < 4; i++) { const y = hy - 100 + i * 24, x0 = hx - 50; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 - 50 - hash(i, 9) * 40, y); ctx.stroke(); }
+  ctx.save(); ctx.translate(hx, hy); ctx.rotate(0.1);
+  SHOP.drawHero(ctx, CHARACTERS[0], { s: hs, col: R, t: 0.42, run: 0.25, moving: 1, air: false, face: 1, squash: 1 }, {});
+  ctx.restore();
+
+  // ---------- title ----------
+  const [tx, ty, ts] = L.title;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const [word, y] of [['PAINT', ty], ['RUNNER', ty + ts * 0.92]]) {
+    ctx.font = `700 ${ts}px Fredoka, ui-rounded, sans-serif`;
+    ctx.fillStyle = INK; for (let o = 1; o <= 8; o++) ctx.fillText(word, tx + o * 0.9, y + o * 0.9);
+    ctx.lineWidth = ts * 0.085; ctx.strokeStyle = INK; ctx.lineJoin = 'round'; ctx.strokeText(word, tx, y);
+    ctx.fillStyle = '#fff'; ctx.fillText(word, tx, y);
+  }
+  ctx.font = `700 ${ts}px Fredoka, ui-rounded, sans-serif`;
+  const rw = ctx.measureText('RUNNER').width, base = ty + ts * 0.92 + ts * 0.34;
+  [[0.07, B, 0.4], [0.31, R, 0.75], [0.53, G, 0.5], [0.76, Y, 0.62], [0.93, P, 0.35]].forEach(([f, col, len]) => {
+    const x = tx - rw / 2 + f * rw, l = ts * len * 0.45, wv = ts * 0.05;
+    ctx.fillStyle = col; ctx.strokeStyle = INK; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(x - wv, base - 4); ctx.quadraticCurveTo(x - wv * 0.6, base + l * 0.6, x - wv * 0.8, base + l);
+    ctx.arc(x, base + l, wv * 0.9, Math.PI, 0, true); ctx.quadraticCurveTo(x + wv * 0.6, base + l * 0.6, x + wv, base - 4); ctx.fill(); ctx.stroke();
+  });
+  const lines = ['The world is black and white.', 'You have the paint.'];
+  ctx.font = `700 ${PORTRAIT ? 22 : 25}px Fredoka, ui-rounded, sans-serif`;
+  lines.forEach((ln, i) => {
+    const y = ty + ts * 1.92 + 14 + i * (PORTRAIT ? 28 : 31);
+    ctx.lineWidth = 7; ctx.strokeStyle = PAPER; ctx.strokeText(ln, tx, y);
+    ctx.fillStyle = i ? R : INK; ctx.fillText(ln, tx, y);
+  });
+
+  ctx.save(); ctx.scale(CW / 960, CH / 544); ART.vignette(ctx); ctx.restore();
+}
+document.fonts.load('700 10px Fredoka').finally(() => { draw(); setTimeout(() => { draw(); document.title = 'ready'; }, 900); });
+</script>
