@@ -3,7 +3,7 @@
 // ============================================================
 //  Levels
 //
-//  Map legend (30 x 17 tiles):
+//  Map legend (30 x 17 tiles; boss chases are wider - see chaseLevel):
 //    #  paintable block     M  metal (paint won't stick)
 //    ^  spikes              L  lava              P  player start      F  finish flag
 //
@@ -1188,56 +1188,98 @@ const LEVEL_DEFS = [
 
 // The order levels are played in. Each new color first gets levels of its own, then
 // mixes with the colors before it, then meets the monsters.
+// ---------- boss chases: the Eraser rubs the world out behind you ----------
+// Wide levels (several screens) built from proven pieces. Each piece only uses colors you have by
+// then. `parts` records where each piece sits, for the level-testing bot (tests/bosses.js).
+const PIECES = {
+  run: { w: 7, build: (g, o, opt) => { if (opt.can) g.can(o + 3, 13); } },
+  // a wall: bounce over it from a blue pad
+  wall: { w: 10, build: (g, o) => g.fill(o + 4, o + 5, 9, 13, '#') },
+  // a spike pit: sprint over it on red paint
+  pit: { w: 18, build: (g, o) => g.fill(o + 8, o + 13, 13, 13, '^') },
+  // a tall wall: paint it green and climb
+  climb: { w: 11, build: (g, o) => g.fill(o + 4, o + 5, 6, 13, '#') },
+  // climb a wall, then hang from a green ceiling over a lava pool
+  ceiling: { w: 22, build: (g, o) => { g.fill(o + 2, o + 3, 7, 13, '#'); g.fill(o + 2, o + 18, 3, 3, '#'); g.fill(o + 4, o + 17, 14, 15, 'L'); } },
+  // a low tunnel: shrink with yellow to get through, grow back after
+  tunnel: { w: 15, build: (g, o) => g.fill(o + 4, o + 9, 9, 12, '#') },
+  // a metal wall up to the ceiling: open a purple portal on each side
+  portal: { w: 15, build: (g, o) => g.fill(o + 5, o + 6, 6, 13, 'M') },
+  // two Inkies patrolling
+  monsters: { w: 15, build: (g, o) => { g.fill(o + 1, o + 1, 13, 13, '#'); g.fill(o + 13, o + 13, 13, 13, '#'); g.monster(o + 6, -1); g.monster(o + 10, 1); } },
+  end: { w: 8, build: (g, o) => { g.at(o + 5, 13, 'F'); } },
+};
+function chaseLevel({ name, world, colors, hint, speed, delay, parts }) {
+  const list = [['run', { w: 6 }], ...parts, ['end', {}]].map(([k, opt]) => [k, opt || {}]);
+  const cols = 2 + list.reduce((n, [k, opt]) => n + (opt.w || PIECES[k].w), 0), rows = 17;
+  const grid = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => (r === 0 || r >= 14 || c === 0 || c === cols - 1 ? '#' : '.')));
+  const cans = [], monsters = [], placed = [];
+  const g = {
+    fill: (c0, c1, r0, r1, ch) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) grid[r][c] = ch; },
+    at: (c, r, ch) => { grid[r][c] = ch; },
+    can: (c, r) => cans.push([c, r]),
+    monster: (c, dir) => monsters.push({ type: 'inky', c, r: 13, dir }),
+  };
+  let o = 1;
+  for (const [k, opt] of list) { PIECES[k].build(g, o, opt); placed.push({ kind: k, o, ...opt }); o += opt.w || PIECES[k].w; }
+  g.at(3, 13, 'P');
+  return { name, world, boss: true, big: true, colors, hint, chase: { start: -3, delay, speed }, cans, monsters, parts: placed, map: grid.map((r) => r.join('')) };
+}
+const BOSSES = [
+  chaseLevel({
+    name: 'The Eraser Arrives', world: 0, colors: [BLUE], speed: 1.0, delay: 300,
+    hint: 'The Eraser is coming! Bounce over the walls on blue before he rubs you out!',
+    parts: [['wall'], ['run', { can: true }], ['wall'], ['run'], ['wall'], ['monsters'], ['run', { can: true }], ['wall'], ['run', { can: true }], ['wall']],
+  }),
+  chaseLevel({
+    name: 'Run, Red, Run', world: 1, colors: [BLUE, RED], speed: 1.25, delay: 270,
+    hint: 'He is faster now. Bounce on blue, sprint on red, and do not look back!',
+    parts: [['wall'], ['pit'], ['run', { can: true }], ['wall'], ['monsters'], ['pit'], ['run', { can: true }], ['wall'], ['pit'], ['run', { can: true }], ['wall']],
+  }),
+  chaseLevel({
+    name: 'Forest Escape', world: 2, colors: [BLUE, RED, GREEN], speed: 1.3, delay: 240,
+    hint: 'Climb on green, hang from the ceiling, keep moving!',
+    parts: [['wall'], ['pit'], ['run', { can: true }], ['climb'], ['ceiling'], ['run', { can: true }], ['monsters'], ['pit'], ['climb'], ['run', { can: true }], ['wall']],
+  }),
+  chaseLevel({
+    name: 'Tiny Getaway', world: 3, colors: [BLUE, RED, GREEN, YELLOW], speed: 1.4, delay: 240,
+    hint: 'Shrink on yellow to slip through the tunnels. He will not wait for you!',
+    parts: [['wall'], ['tunnel'], ['run', { can: true }], ['pit'], ['climb'], ['tunnel'], ['run', { can: true }], ['ceiling'], ['monsters'], ['tunnel'], ['run', { can: true }], ['wall']],
+  }),
+  chaseLevel({
+    name: 'The Great Chase', world: 4, colors: [BLUE, RED, GREEN, YELLOW, PURPLE], speed: 1.5, delay: 210,
+    hint: 'Every color you have. Portals through the metal walls. Run!',
+    parts: [['wall'], ['portal'], ['run', { can: true }], ['tunnel'], ['pit'], ['climb'], ['portal'], ['run', { can: true }], ['ceiling'], ['monsters'], ['tunnel'], ['portal'], ['run', { can: true }], ['wall']],
+  }),
+];
+for (const b of BOSSES) LEVEL_DEFS.push(b);
+
 const LEVEL_ORDER = [
   // Blue
-  'Blue Bounces', 'Up and Up', 'Meet Inky', 'Wash Day', 'Hat Check', 'On the Move', 'Monster Mash', 'Ink Storm',
+  'Blue Bounces', 'Up and Up', 'Meet Inky', 'Wash Day', 'Hat Check', 'On the Move', 'Monster Mash', 'Ink Storm', 'The Eraser Arrives',
   // Red
-  'Red Rush', 'Lava Run', 'Two Colors', 'Hot Bounce', 'Red Alert', 'Hat Trick', 'Speed Wash', 'Red Hat Riot',
+  'Red Rush', 'Lava Run', 'Two Colors', 'Hot Bounce', 'Red Alert', 'Hat Trick', 'Speed Wash', 'Red Hat Riot', 'Run, Red, Run',
   // Green
-  'Sticky Situation', 'Ceiling Walk', 'Elevator', 'Green Bounce', 'Ink Patrol', 'Spectrum', 'Clean Freak', 'Green Hat',
+  'Sticky Situation', 'Ceiling Walk', 'Elevator', 'Green Bounce', 'Ink Patrol', 'Spectrum', 'Clean Freak', 'Green Hat', 'Forest Escape',
   // Yellow
-  'Honey, I Shrunk Me', 'Grow Up', 'Through the Window', 'Tiny Spaces', 'Shrink Climb', 'Mad Hatters', 'Small Fry', 'Size Matters',
+  'Honey, I Shrunk Me', 'Grow Up', 'Through the Window', 'Tiny Spaces', 'Shrink Climb', 'Mad Hatters', 'Small Fry', 'Size Matters', 'Tiny Getaway',
   // Purple
-  'Portal Painter', 'Portal Hop', 'Fling', 'Lava Leap', 'Portal Climb', 'Portal Patrol', 'Portal Hats', 'Purple Rain',
+  'Portal Painter', 'Portal Hop', 'Fling', 'Lava Leap', 'Portal Climb', 'Portal Patrol', 'Portal Hats', 'Purple Rain', 'The Great Chase',
   // Finale
   'Lava Lake', 'Lava Ferry', 'Gauntlet', 'Grand Finale', 'Masterpiece',
 ];
-
-// ---------- WOW test level (index.html#wow): three screens wide, with the Eraser chasing you ----------
-const WOW_LEVEL = (() => {
-  const cols = 96, rows = 17;
-  const g = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => (r === 0 || r >= 14 || c === 0 || c === cols - 1 ? '#' : '.')));
-  const fill = (c0, c1, r0, r1, ch) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) g[r][c] = ch; };
-  // 1. a tall plateau: bounce up onto it (paint the floor before it blue)
-  fill(13, 24, 8, 13, '#');
-  // 2. a spike pit: paint the plateau red and fly over it
-  fill(25, 33, 13, 13, '^');
-  // 3. a wall to climb (green), a ceiling to walk on (green) over a lava pool
-  fill(47, 48, 7, 13, '#');
-  fill(47, 63, 3, 3, '#');
-  fill(49, 62, 14, 15, 'L');
-  // 4. the last stretch: monsters and one more wall to bounce over
-  fill(82, 83, 9, 13, '#');
-  g[13][3] = 'P'; g[13][91] = 'F';
-  return {
-    name: 'Eraser Chase', big: true, test: true, colors: [BLUE, RED, GREEN],
-    hint: 'The Eraser is coming! Run, paint and escape before he rubs you out!',
-    chase: { start: -3, delay: 240, speed: 1.3 },
-    cans: [[20, 6], [56, 4], [82, 6]],
-    monsters: [{ type: 'inky', c: 70, r: 13, dir: -1 }, { type: 'inky', c: 76, r: 13, dir: 1 }],
-    map: g.map((row) => row.join('')),
-  };
-})();
 
 const LEVELS = LEVEL_ORDER.map((name) => {
   const def = LEVEL_DEFS.find((d) => d.name === name);
   if (!def) throw new Error(`Unknown level in LEVEL_ORDER: ${name}`);
   return def;
 });
-
-// the test level joins the list only when asked for (index.html#wow)
-if (typeof location !== 'undefined' && /wow/.test(location.hash)) LEVELS.push(WOW_LEVEL);
+// which world each level belongs to (0 blue ... 4 purple, 5 the finale): a boss chase closes each world
+{
+  let world = 0;
+  for (const l of LEVELS) { l.world = world; if (l.boss) world++; }
+}
 
 if (typeof module !== 'undefined') {
-  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE, WOW_LEVEL };
+  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE, BOSSES };
 }

@@ -22,6 +22,7 @@ const Achievements = (() => {
     funny: { name: 'Funny', color: '#ff8c1a', reward: 50 },
   };
   const ALL_BONUS = 1500;
+  const N = typeof LEVELS !== 'undefined' ? LEVELS.length : 50;
   const LIST = [
     // ---- easy ----
     { id: 'first-splash', tier: 'easy', icon: '🎨', name: 'First Splash', desc: 'Throw your first paint' },
@@ -44,12 +45,12 @@ const Achievements = (() => {
     { id: 'perfectionist', tier: 'medium', icon: '⭐', name: 'Perfectionist', desc: 'Get all 3 cans in 10 levels', goal: 10, value: (c) => c.perfectLevels },
     { id: 'world-tour', tier: 'medium', icon: '🗺️', name: 'World Tour', desc: 'Clear the first level of every world', goal: 6, value: (c) => c.worldFirsts },
     { id: 'on-a-roll', tier: 'medium', icon: '📅', name: 'On a Roll', desc: 'Play 7 days in a row', goal: 7, count: 'bestStreak' },
-    { id: 'halfway', tier: 'medium', icon: '🧭', name: 'Halfway There', desc: 'Clear 23 levels', goal: 23, value: (c) => c.cleared },
+    { id: 'halfway', tier: 'medium', icon: '🧭', name: 'Halfway There', desc: `Clear ${Math.ceil(N / 2)} levels`, goal: Math.ceil(N / 2), value: (c) => c.cleared },
     { id: 'stompede', tier: 'medium', icon: '🐘', name: 'Stompede', desc: 'Stomp 25 monsters', goal: 25, count: 'stomps' },
     { id: 'can-do', tier: 'medium', icon: '🥫', name: 'Can Do', desc: 'Collect 100 paint cans', goal: 100, count: 'cans' },
     // ---- hard ----
-    { id: 'masterpiece', tier: 'hard', icon: '🖼️', name: 'Masterpiece', desc: 'Clear all 45 levels', goal: 45, value: (c) => c.cleared },
-    { id: 'star-collector', tier: 'hard', icon: '🌟', name: 'Star Collector', desc: 'Collect all 135 stars', goal: 135, value: (c) => c.stars },
+    { id: 'masterpiece', tier: 'hard', icon: '🖼️', name: 'Masterpiece', desc: `Clear all ${N} levels`, goal: N, value: (c) => c.cleared },
+    { id: 'star-collector', tier: 'hard', icon: '🌟', name: 'Star Collector', desc: `Collect all ${N * 3} stars`, goal: N * 3, value: (c) => c.stars },
     { id: 'flawless', tier: 'hard', icon: '💎', name: 'Flawless', desc: 'Clear a level from World 4 or later without dying' },
     { id: 'minimalist', tier: 'hard', icon: '☝️', name: 'Minimalist', desc: 'Clear a level using only 1 throw' },
     { id: 'speed-painter', tier: 'hard', icon: '⚡', name: 'Speed Painter', desc: 'Beat 5 levels in under 10 seconds each', goal: 5, value: (c) => c.fastLevels },

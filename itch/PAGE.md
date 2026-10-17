@@ -25,8 +25,10 @@ Paint Runner is a hand-inked puzzle platformer. You can't jump high enough, run 
 Monsters play by the same rules. Paint the floor under an Inky and watch it race, hop, get stuck, shrink down to size or wander into your portal. Hat-wearing monsters shoot paint back at you, and the white-hat Washer cleans your colors away.
 
 **What's inside**
-- 45 hand-made levels across 5 painted worlds, plus a lava-filled finale
-- 3 paint cans to collect in every level, 135 stars in all
+- 50 hand-made levels across 5 painted worlds, plus a lava-filled finale
+- 5 boss chases: huge levels where the Eraser rubs the world out behind you - run, paint and escape!
+- Living paint: blue wobbles like jelly, green sprouts grass and vines, red glows and sparks, yellow sparkles
+- 3 paint cans to collect in every level, 150 stars in all
 - No checkpoints. Every level is a short, sharp run you can master
 - Online leaderboards for fastest time, fastest 3-can run and fewest throws
 - Ghost racing: race a see-through replay of the #1 run on every level, or your own best

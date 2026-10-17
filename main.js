@@ -487,9 +487,13 @@
   };
   // You can play every level up to and including the first one you haven't cleared.
   // (Based on level names, so reordering or adding levels never skips anything.)
+  // The level picker opens up to your first unbeaten level - or past the furthest level you've
+  // beaten, so levels added along the way (the boss chases) never lock away what you'd reached.
   function refreshUnlocked() {
-    const i = LEVELS.findIndex((l) => game.best[l.name] === undefined);
-    game.unlocked = i < 0 ? LEVELS.length - 1 : i;
+    const first = LEVELS.findIndex((l) => game.best[l.name] === undefined);
+    let last = -1;
+    LEVELS.forEach((l, i) => { if (game.best[l.name] !== undefined) last = i; });
+    game.unlocked = Math.min(LEVELS.length - 1, Math.max(first < 0 ? LEVELS.length - 1 : first, last + 1));
   }
   refreshUnlocked();
   game.menuIdx = game.unlocked;
@@ -578,7 +582,7 @@
           break;
         case 'sizzle': sfx.sizzle(); burst(ev.x, ev.y, '#bbb', 8, 2, 4); burst(ev.x, ev.y, '#ff8c1a', 5, 2.5, 2); break;
         case 'respawn': sfx.respawn(); break;
-        case 'stomp': game.runStomps++; sfx.stomp(); squash = 1.3; game.shake = 4; burst(ev.x, ev.y, INK, 18, 5, 4); if (WOW) game.hitstop = 5; break;
+        case 'stomp': game.runStomps++; sfx.stomp(); squash = 1.3; game.shake = 4; burst(ev.x, ev.y, INK, 18, 5, 4); game.hitstop = 5; break;
         case 'monsterDie':
           if (ev.cause === 'lava') { sfx.sizzle(); burst(ev.x, ev.y, '#ff8c1a', 16, 4, 4); }
           else { sfx.stomp(); burst(ev.x, ev.y, INK, 14, 4, 4); }
@@ -628,7 +632,7 @@
     if (unlockedNow.length) setTimeout(() => sfx.grow(), 400);
     refreshUnlocked();
     store.set('unlocked', game.unlocked);
-    if (w.deaths === 0 && game.levelIdx >= 24) Achievements.unlock('flawless');   // World 4 (yellow) or later, no falls
+    if (w.deaths === 0 && LEVELS[game.levelIdx].world >= 3) Achievements.unlock('flawless');   // World 4 (yellow) or later, no falls
     if (w.throws === 1) Achievements.unlock('minimalist');
     if (w.deaths === 0) Achievements.add('cleanRuns');
     achCheck();
@@ -856,13 +860,13 @@
       cleared: names.filter(cleared).length,
       stars: totalStars(),
       perfectLevels: names.filter((n) => (game.stars[n] || 0) >= 3).length,
-      worldFirsts: [0, 8, 16, 24, 32, 40].filter((i) => LEVELS[i] && cleared(LEVELS[i].name)).length,
+      worldFirsts: [0, 1, 2, 3, 4, 5].map((k) => LEVELS.find((l) => l.world === k && !l.boss)).filter((l) => l && cleared(l.name)).length,
       fastLevels: names.filter((n) => cleared(n) && game.best[n] < 10).length,
       spent: game.wallet.spent || 0,
       drops: drops(),
       outfit: ['hat', 'trail', 'skin', 'splat', 'flag'].filter((c) => game.wallet.equipped[c]).length,
       owned: game.wallet.owned.filter((id) => id !== 'trophy').length,
-      finalePerfect: LEVELS.slice(40).filter((l) => (game.stars[l.name] || 0) >= 3).length,
+      finalePerfect: LEVELS.filter((l) => l.world === 5).filter((l) => (game.stars[l.name] || 0) >= 3).length,
       charsUnlocked: CHARACTERS.filter((c) => totalStars() >= c.stars).length,
     };
   }
@@ -956,11 +960,6 @@
 
     if (tapped('KeyM')) showToast(Sound.toggleMusic() ? '♪ Music on' : '♪ Music off');
     if (tapped('KeyF')) toggleFullscreen();
-    if (WOW && tapped('KeyZ')) {
-      cam.zoomSmall = !cam.zoomSmall;
-      if (game.world) stepCamera(game.world, true);
-      showToast(cam.zoomSmall ? '🎥 Zoom camera on' : '🎥 Zoom camera off');
-    }
     if (tapped('KeyG')) {
       const next = Ghost.MODES[(Ghost.MODES.indexOf(Ghost.mode) + 1) % Ghost.MODES.length];
       setGhostMode(next);
@@ -1036,6 +1035,11 @@
       // a stomp freezes the action for a split second (hit-stop)
       if (game.hitstop > 0) { game.hitstop--; pressed.clear(); return; }
       w.step(inp);
+      if (w.level.chase && w.state === 'play') {           // the countdown ticks, then the Eraser comes
+        const left = (w.level.chase.delay || 120) - w.frame;
+        if (left > 0 && left % 60 === 0) sfx.warn();
+        if (left === 0) { sfx.stomp(); game.shake = 8; }
+      }
       stepCamera(w);
       Ghost.record(w);
       if (w.state === 'play' && w.player.cling === 2) { if (++ceilingFrames >= 300) Achievements.unlock('spider-painter'); } else ceilingFrames = 0;
@@ -1119,17 +1123,16 @@
   }
 
   // ---------- the camera ----------
-  // One-screen levels sit still (unless the zoom camera is on); wider levels follow you, looking a
+  // One-screen levels sit still; wider levels (the boss chases) follow you, looking a
   // little ahead in the direction you run, and punch in a touch on big bounces.
-  const WOW = /wow/.test(location.hash);
-  const cam = { x: 0, y: 0, z: 1, cx: W / 2, cy: H / 2, punch: 0, on: false, zoomSmall: false };
+  const cam = { x: 0, y: 0, z: 1, cx: W / 2, cy: H / 2, punch: 0, on: false };
   function stepCamera(w, snap) {
     const lv = w.level, big = lv.w > W || lv.h > H;
-    cam.on = big || cam.zoomSmall;
+    cam.on = big;
     if (!cam.on) { cam.x = 0; cam.y = 0; cam.z = 1; return; }
     const p = w.player;
     cam.punch *= 0.9;
-    cam.z = (big ? 1.08 : 1.18) + cam.punch;
+    cam.z = 1.08 + cam.punch;
     const ahead = Math.max(-1, Math.min(1, p.vx / RUN)) * 80 + p.face * 24;
     const tx = p.x + p.w / 2 + ahead, ty = p.y + p.h / 2 - 16;
     if (snap) { cam.cx = tx; cam.cy = ty; } else { cam.cx += (tx - cam.cx) * 0.08; cam.cy += (ty - cam.cy) * 0.07; }
@@ -1545,8 +1548,25 @@
     ctx.globalAlpha = 1;
   }
 
+  // a boss chase: the countdown until the Eraser comes (it starts with the level, moving or not)
+  function drawCountdown(w) {
+    const ch = w.level.chase;
+    if (!ch || w.state === 'won') return;
+    const left = (ch.delay || 120) - w.frame;
+    if (left <= -60) return;
+    const n = Math.ceil(left / 60), k = left > 0 ? 1 - (left % 60) / 60 : -left / 60;   // 0..1 within the second
+    const str = left > 0 ? String(n) : 'ERASER!';
+    const size = left > 0 ? 70 + k * 30 : 64, a = left > 0 ? 1 - k * 0.6 : 1 - k;
+    ctx.save(); ctx.globalAlpha = Math.max(0, a);
+    for (const [ox, oy] of [[-3, 0], [3, 0], [0, -3], [0, 3]]) text(str, W / 2 + ox, 120 + oy, size, INK, 'center', 900);
+    text(str, W / 2, 120, size, left > 0 ? '#fff' : '#ff3b4e', 'center', 900);
+    if (left > 0 && n === Math.ceil(ch.delay / 60)) text('The Eraser is coming...', W / 2, 180, 20, INK, 'center', 800);
+    ctx.restore();
+  }
+
   function drawHUD(w) {
     const lv = w.level;
+    drawCountdown(w);
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, W, 30);
     text(`${game.levelIdx + 1} / ${LEVELS.length}   ${lv.name}`, 12, 15, 15, '#fff');
@@ -1683,7 +1703,7 @@
     const lv = LEVELS[game.menuIdx];
     ctx.fillStyle = INK;
     roundRect(W / 2 - 210, 362, 420, 72, 14); ctx.fill();
-    text(`◀  Level ${game.menuIdx + 1}: ${lv.name}  ▶`, W / 2, 384, 19, '#fff', 'center');
+    text(`◀  ${lv.boss ? '⚠ Boss chase' : 'Level'} ${game.menuIdx + 1}: ${lv.name}  ▶`, W / 2, 384, 19, lv.boss ? '#ff8a96' : '#fff', 'center');
     // colors used in this level
     lv.colors.forEach((c, i) => {
       ctx.fillStyle = COLOR_HEX[c];
@@ -1863,18 +1883,6 @@
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
   window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
 
-  // ---------- the WOW test (index.html#wow) ----------
-  // Living paint everywhere, the Eraser Chase level straight away, and Z for the zoom camera on
-  // one-screen levels.
-  if (WOW) {
-    ART.opts.livingPaint = true;
-    const wait = setInterval(() => {
-      if (document.getElementById('splash')) return;
-      clearInterval(wait);
-      if (game.mode === 'title') play(LEVELS.length - 1);
-    }, 150);
-  }
-
   // ---------- the story ----------
   // The opening comic plays once for every player, right after the "tap to start" screen.
   // (index.html#story / #ending play a scene on demand; links straight to a level skip it.)
@@ -1884,7 +1892,7 @@
     Story.play(which, () => { keys.clear(); pressed.clear(); mouse.down = false; });
   }
   const storyHash = /ending/.test(location.hash) ? 'ending' : /story/.test(location.hash) ? 'intro' : null;
-  if (storyHash || (!store.get('seenIntro', false) && !/level=|nosplash|wow/.test(location.hash))) {
+  if (storyHash || (!store.get('seenIntro', false) && !/level=|nosplash/.test(location.hash))) {
     const wait = setInterval(() => {
       if (typeof Story === 'undefined' || document.getElementById('splash')) return;
       clearInterval(wait);

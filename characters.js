@@ -24,7 +24,8 @@ const CHARACTERS = (() => {
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
   // stars needed for a share of the whole game's stars, rounded to a multiple of 5
-  const starsFor = (share) => Math.round((share * LEVELS.length * 3) / 5) * 5;
+  // (counted against the first 45 levels' 135 stars, so new levels never raise what you need)
+  const starsFor = (share) => Math.round((share * 45 * 3) / 5) * 5;
   const blink = (t) => ((t * 0.55) % 3.2) < 0.12;
 
   // two ink feet that swing while running and tuck while airborne

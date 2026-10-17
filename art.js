@@ -155,6 +155,9 @@ const ART = (() => {
     }
   }
 
+  // which world's drawing goes behind a level
+  const themeOf = (i) => Math.min(5, typeof LEVELS !== 'undefined' && LEVELS[i] && LEVELS[i].world !== undefined ? LEVELS[i].world : Math.floor(i / 8));
+
   // The paper for one level: color, pencil sketch, grain. Cached per level.
   const papers = new Map();
   function paper(levelName, levelIdx) {
@@ -163,7 +166,7 @@ const ART = (() => {
     const c = off(W, H), g = c.getContext('2d');
     g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
     const seed = [...levelName].reduce((n, ch) => n * 31 + ch.charCodeAt(0), 7) >>> 0;
-    sketchWorld(() => g, Math.min(5, Math.floor(levelIdx / 8)), seeded(seed));
+    sketchWorld(() => g, themeOf(levelIdx), seeded(seed));
     g.fillStyle = g.createPattern(grain, 'repeat'); g.fillRect(0, 0, W, H);
     papers.set(levelName, c);
     return c;
@@ -460,10 +463,11 @@ const ART = (() => {
   //             'sketch': ...and colors the pencil drawing it touches
   //   living  - clouds drift, birds fly, the windmill turns, smoke rises, stars twinkle
   //   parallax- the drawing behind the level shifts a little as you move: depth
+  //   livingPaint - blue jelly, green grass and vines, red glow and sparks, yellow sparkles
   // ============================================================
   // living backgrounds and parallax are the look for everyone (still, for players who ask for less motion)
   const calm = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const opts = { color: 'bloom', living: !calm, parallax: !calm };
+  const opts = { color: 'bloom', living: !calm, parallax: !calm, livingPaint: true };
   const layered = () => opts.color !== 'off' || opts.living || opts.parallax;
 
   // the sketch in layers, for living/parallax backgrounds (cached per level)
@@ -482,7 +486,7 @@ const ART = (() => {
     bg.fillStyle = PAPER; bg.fillRect(0, 0, W, H);
     const seed = [...levelName].reduce((n, ch) => n * 31 + ch.charCodeAt(0), 7) >>> 0;
     const anims = [];
-    const theme = Math.min(5, Math.floor(levelIdx / 8));
+    const theme = themeOf(levelIdx);
     for (let k = 0; k < panels; k++) {
       for (const L of [far, mid, still]) { L.g.setTransform(1, 0, 0, 1, M + k * W, M); }
       sketchWorld((layer) => (layer === 'far' ? far.g : layer === 'mid' ? mid.g : still.g), theme, seeded(seed + k * 7919), (it) => anims.push({ ...it, ox: k * W }));
