@@ -504,10 +504,14 @@
   let heroTrail = SHOP.makeTrail(), splatMarks = [], pops = [], stains = [];
   let prevJumpHeld = false;
 
+  let levelTrack = null;
   function startLevel(i) {
     levelColors = new Set(); ceilingFrames = 0;
     if (new Date().getHours() === 18) Achievements.unlock('dinner-time');   // 6 to 7 pm
     Achievements.playedToday();
+    // the music for this level: the boss chase theme, or one of the five level tracks (a different
+    // one from the last level's; restarting the same level keeps its track)
+    if (i !== game.levelIdx || !levelTrack) levelTrack = LEVELS[i].boss ? 'boss' : Sound.pickLevelTrack();
     game.levelIdx = i;
     game.world = new World(LEVELS[i]);
     game.mode = 'play';
@@ -1965,7 +1969,8 @@
     last = now;
     while (acc >= STEP) { update(); acc -= STEP; }
     if (typeof UI !== 'undefined') UI.setMode(game.mode);
-    Sound.setTrack(game.mode === 'play' || game.mode === 'complete' ? 'level' : 'theme');
+    // (while a story scene plays, it picks the music)
+    if (!(typeof Story !== 'undefined' && Story.playing)) Sound.setTrack(game.mode === 'play' || game.mode === 'complete' ? levelTrack : 'menu');
     render();
     requestAnimationFrame(loop);
   }

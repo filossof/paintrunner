@@ -193,6 +193,7 @@ const Story = (() => {
   const INTRO = [
     {
       text: 'Once upon a time, the world was full of color.',
+      music: 'story-open-1',
       draw(g, t) {
         landscape(g, t, true);
         // the ink blob, hopping and splashing paint
@@ -207,6 +208,7 @@ const Story = (() => {
     },
     {
       text: 'Then came the Eraser. He hated color.',
+      music: 'story-open-2',
       draw(g, t) {
         // the Eraser rubs across the page; the color is gone wherever he has been
         const k = Math.min(1, t / 5.5), ex = -160 + (k * k * (3 - 2 * k)) * (SW + 320), ey = 250 + Math.sin(t * 5) * 34;
@@ -230,6 +232,7 @@ const Story = (() => {
     },
     {
       text: 'He scrubbed the world clean, and his Washers locked every color away in paint cans.',
+      music: 'story-open-2',
       draw(g, t) {
         landscape(g, t, false);
         // a volcano far away: where the colors are taken
@@ -250,6 +253,7 @@ const Story = (() => {
     },
     {
       text: 'But one little ink blob was missed... and it found one last can of blue.',
+      music: 'story-open-3',
       draw(g, t) {
         paper(g);
         pencil(g, curve((x) => 430 + Math.sin(x * 0.01) * 5, -10, 970), 0.6, 2, 71);
@@ -275,6 +279,7 @@ const Story = (() => {
     },
     {
       text: 'Run. Paint. Bring the colors home!',
+      music: 'story-open-3',
       final: true,
       draw(g, t) {
         paper(g);
@@ -324,6 +329,7 @@ const Story = (() => {
   const ENDING = [
     {
       text: 'You did it! All five colors are home, and the world is bright again.',
+      music: 'story-end-1',
       draw(g, t) {
         landscape(g, t, true);
         const hop = Math.abs(Math.sin(t * 4)) * 26;
@@ -338,6 +344,7 @@ const Story = (() => {
     },
     {
       text: 'But the Eraser got away...',
+      music: 'story-end-2',
       draw(g, t) {
         landscape(g, t, true);
         portal(g, 850, 270, 46 + Math.min(1, t / 0.8) * 20, t);
@@ -352,6 +359,7 @@ const Story = (() => {
     },
     {
       text: '...and he took a color nobody has ever seen.',
+      music: 'story-end-2',
       draw(g, t) {
         paper(g);
         g.fillStyle = 'rgba(28,28,31,0.88)'; g.fillRect(0, 0, SW, SH);
@@ -372,6 +380,7 @@ const Story = (() => {
     },
     {
       text: 'Get ready for Chapter 2: the Eraser\'s Kingdom. New worlds and new paint, coming very soon!',
+      music: 'story-end-3',
       final: true,
       draw(g, t) {
         paper(g);
@@ -424,6 +433,7 @@ const Story = (() => {
     const typed = () => Math.floor((performance.now() - start - 350) / 32);
     function show(i) {
       idx = i; start = performance.now(); fade = 0;
+      if (PANELS[i].music && typeof Sound !== 'undefined') Sound.setTrack(PANELS[i].music);
       el.querySelectorAll('.st-dots i').forEach((d, k) => d.classList.toggle('on', k <= i));
     }
     function finish() {
