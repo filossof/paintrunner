@@ -3,3 +3,6 @@ node_modules/
 dist/
 itch/*.png
 itch/*.gif
+_runs.json
+_gifenc.js
+itch/devlog2/
