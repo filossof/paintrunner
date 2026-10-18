@@ -602,7 +602,15 @@
           } else { sfx.die(); game.shake = 12; burst(ev.x, ev.y, '#111', 30, 6, 5); }
           break;
         case 'sizzle': sfx.sizzle(); burst(ev.x, ev.y, '#bbb', 8, 2, 4); burst(ev.x, ev.y, '#ff8c1a', 5, 2.5, 2); break;
-        case 'respawn': sfx.respawn(); break;
+        case 'respawn': {
+          sfx.respawn();
+          const tips = LEVELS[game.levelIdx].tips;
+          if (tips) {
+            const tip = tips[(world.deaths - 1) % tips.length];
+            showToast('💡 ' + (touchMode ? tip.replace(/\bClick\b/g, 'Tap').replace(/\bclick\b/g, 'tap') : tip), 4200);
+          }
+          break;
+        }
         case 'stomp': game.runStomps++; sfx.stomp(); squash = 1.3; game.shake = 4; burst(ev.x, ev.y, INK, 18, 5, 4); game.hitstop = 5; break;
         case 'monsterDie':
           if (ev.cause === 'lava') { sfx.sizzle(); burst(ev.x, ev.y, '#ff8c1a', 16, 4, 4); }
@@ -1143,6 +1151,32 @@
     } else ctx.drawImage(game.world ? ART.paper(LEVELS[game.levelIdx].name, game.levelIdx) : ART.plainPaper(), 0, 0);
   }
 
+  // notes on the paper, like a sketchbook (a bobbing arrow points at the spot)
+  function drawSigns(w) {
+    const signs = LEVELS[game.levelIdx].signs;
+    if (!signs) return;
+    const t = game.tick / 60;
+    for (const sg of signs) {
+      const lines = touchMode && sg.touch ? sg.touch : sg.lines, x = sg.c * T, y = sg.r * T + Math.sin(t * 2) * 2;
+      ctx.font = '800 16px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
+      const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)), lh = 22, h = lines.length * lh + 14;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(-0.03);
+      ctx.fillStyle = 'rgba(255,253,247,0.94)'; roundRect(-tw / 2 - 12, -h / 2, tw + 24, h, 8); ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke();
+      lines.forEach((l, i) => text(l, -tw / 2, -h / 2 + 7 + lh / 2 + i * lh, 16, INK, 'left', 800));
+      ctx.restore();
+      if (sg.to) {                                        // the arrow, from the note to the spot
+        const tx = sg.to[0] * T, ty = sg.to[1] * T, b = Math.abs(Math.sin(t * 4)) * 6;
+        const sx = x + tw / 2 - 10, sy = y + h / 2 + 4, ang = Math.atan2(ty - sy, tx - sx);
+        const ex = tx - Math.cos(ang) * (22 - b), ey = ty - Math.sin(ang) * (22 - b);
+        ctx.strokeStyle = '#2f7bff'; ctx.lineWidth = 3.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx + (ex - sx) * 0.2, ey, ex, ey);
+        ctx.moveTo(ex - Math.cos(ang - 0.5) * 11, ey - Math.sin(ang - 0.5) * 11); ctx.lineTo(ex, ey); ctx.lineTo(ex - Math.cos(ang + 0.5) * 11, ey - Math.sin(ang + 0.5) * 11);
+        ctx.stroke();
+      }
+    }
+  }
+
   // ---------- the camera ----------
   // One-screen levels sit still; wider levels (the boss chases) follow you, looking a
   // little ahead in the direction you run, and punch in a touch on big bounces.
@@ -1638,6 +1672,7 @@
     ART.drawBleed(ctx);
     ART.drawStains(ctx, stains);
     drawTiles(w);
+    drawSigns(w);
     drawLava(w);
     drawPlatforms(w);
     drawPortals(w);
@@ -1909,6 +1944,7 @@
   const eraserTry = /eraser=([abc])/.exec(location.hash);
   const eraserPreset = eraserTry ? useEraserPreset(eraserTry[1]) : null;
   if (!eraserTry) useEraserPreset(touchMode ? 'a' : 'b');
+  if (touchMode) LEVELS.forEach((l) => { if (l.chase && l.chase.touchSpeed) l.chase.speed = l.chase.touchSpeed; });
 
   // ---------- the story ----------
   // The opening comic plays once for every player, right after the "tap to start" screen.
@@ -1916,7 +1952,11 @@
   function playStory(which) {
     keys.clear(); pressed.clear(); mouse.down = mouse.right = false;
     if (which === 'intro') store.set('seenIntro', true);
-    Story.play(which, () => { keys.clear(); pressed.clear(); mouse.down = false; });
+    Story.play(which, () => {
+      keys.clear(); pressed.clear(); mouse.down = false;
+      // a brand-new player goes straight from the comic into the first level ("Run!")
+      if (which === 'intro' && game.mode === 'title' && Object.keys(game.best).length === 0) play(0);
+    });
   }
   const storyHash = /ending/.test(location.hash) ? 'ending' : /story/.test(location.hash) ? 'intro' : null;
   if (storyHash || (!store.get('seenIntro', false) && !/level=|nosplash/.test(location.hash))) {

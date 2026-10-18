@@ -1209,7 +1209,7 @@ const PIECES = {
   monsters: { w: 15, build: (g, o) => { g.fill(o + 1, o + 1, 13, 13, '#'); g.fill(o + 13, o + 13, 13, 13, '#'); g.monster(o + 6, -1); g.monster(o + 10, 1); } },
   end: { w: 8, build: (g, o) => { g.at(o + 5, 13, 'F'); } },
 };
-function chaseLevel({ name, world, colors, hint, speed, delay, parts }) {
+function chaseLevel({ name, world, colors, hint, speed, delay, parts, boss = true, touchSpeed, signs, tips }) {
   const list = [['run', { w: 6 }], ...parts, ['end', {}]].map(([k, opt]) => [k, opt || {}]);
   const cols = 2 + list.reduce((n, [k, opt]) => n + (opt.w || PIECES[k].w), 0), rows = 17;
   const grid = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => (r === 0 || r >= 14 || c === 0 || c === cols - 1 ? '#' : '.')));
@@ -1223,8 +1223,24 @@ function chaseLevel({ name, world, colors, hint, speed, delay, parts }) {
   let o = 1;
   for (const [k, opt] of list) { PIECES[k].build(g, o, opt); placed.push({ kind: k, o, ...opt }); o += opt.w || PIECES[k].w; }
   g.at(3, 13, 'P');
-  return { name, world, boss: true, big: true, colors, hint, chase: { start: -3, delay, speed }, cans, monsters, parts: placed, map: grid.map((r) => r.join('')) };
+  return { name, world, boss, big: true, colors, hint, chase: { start: -3, delay, speed, touchSpeed }, cans, monsters, parts: placed, signs, tips, map: grid.map((r) => r.join('')) };
 }
+// The very first level: a gentle chase that teaches painting and bouncing while the Eraser comes.
+// Signs in the level show what to do at the first wall; each time he gets you, a tip.
+const FIRST_CHASE = chaseLevel({
+  name: 'First Escape', world: 0, boss: false, colors: [BLUE], speed: 1.15, touchSpeed: 0.95, delay: 360,
+  hint: 'Click the floor to paint it blue, then jump on it to bounce over the walls. Run!',
+  parts: [['wall'], ['run', { can: true }], ['wall'], ['run', { can: true }], ['wall'], ['run', { can: true }]],
+  // a note left of the first wall, with an arrow to the floor in front of it
+  signs: [{ c: 6.8, r: 7.6, lines: ['1. Click the floor here', '2. Then jump on the blue!'], touch: ['1. Tap the floor here', '2. Then jump on the blue!'], to: [9.5, 13.7] }],
+  tips: [
+    'Click the floor just before the wall to paint it blue.',
+    'Stand on the blue paint and jump: you bounce way higher!',
+    'Paint the next wall\'s floor while you run. He doesn\'t wait!',
+  ],
+});
+LEVEL_DEFS.push(FIRST_CHASE);
+
 const BOSSES = [
   chaseLevel({
     name: 'The Eraser Arrives', world: 0, colors: [BLUE], speed: 2.05, delay: 180,
@@ -1271,7 +1287,7 @@ function useEraserPreset(key) {
 
 const LEVEL_ORDER = [
   // Blue
-  'Blue Bounces', 'Up and Up', 'Meet Inky', 'Wash Day', 'Hat Check', 'On the Move', 'Monster Mash', 'Ink Storm', 'The Eraser Arrives',
+  'First Escape', 'Blue Bounces', 'Up and Up', 'Meet Inky', 'Wash Day', 'Hat Check', 'On the Move', 'Monster Mash', 'Ink Storm', 'The Eraser Arrives',
   // Red
   'Red Rush', 'Lava Run', 'Two Colors', 'Hot Bounce', 'Red Alert', 'Hat Trick', 'Speed Wash', 'Red Hat Riot', 'Run, Red, Run',
   // Green
@@ -1296,5 +1312,5 @@ const LEVELS = LEVEL_ORDER.map((name) => {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE, BOSSES, ERASER_PRESETS, useEraserPreset };
+  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE, BOSSES, FIRST_CHASE, ERASER_PRESETS, useEraserPreset };
 }

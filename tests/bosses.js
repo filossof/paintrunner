@@ -1,4 +1,4 @@
-// The boss chases: can each be beaten with the Eraser chasing, using real throws only?
+// The chases (the first level and the bosses): can each be beaten with the Eraser chasing, using real throws only?
 // The bot's route is built from the level's pieces (levels.js: chaseLevel / PIECES).
 // Run: node tests/bosses.js
 const B = require('./bot.js');
@@ -7,7 +7,7 @@ const { bounce } = require('./blue.js');
 const { runJump } = require('./red.js');
 const { becomeSize } = require('./yellow.js');
 const { enter } = require('./purple.js');
-const { BOSSES } = require('../levels.js');
+const { BOSSES, FIRST_CHASE } = require('../levels.js');
 
 // paint while hanging from a green ceiling (no "down": that would let go)
 const hangPaint = (ok, color, label) => (w, m) => {
@@ -107,7 +107,7 @@ const ROUTE = {
 };
 
 const R = {};
-for (const def of BOSSES) {
+for (const def of [FIRST_CHASE, ...BOSSES]) {
   const w = new World(def);
   let mi = 0;
   const steps = def.parts.flatMap((p) => {
