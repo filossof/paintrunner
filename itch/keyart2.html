@@ -157,7 +157,7 @@ function draw() {
   // the Eraser, small, in the gray distance... he's coming
   const [erx, ery, ers] = L.eraser;
   for (let i = 0; i < 14; i++) { ctx.fillStyle = 'rgba(220,170,180,0.8)'; ctx.beginPath(); ctx.arc(erx + 40 + hash(i, 1) * 50, ery - 30 + hash(i, 2) * 60, 1.5 + hash(i, 3) * 2.5, 0, 7); ctx.fill(); }
-  Story.drawEraser(ctx, erx, ery, ers, 0.06, 'grumpy');
+  Story.drawEraser(ctx, erx, ery, ers, 0.06);
 
   // the hero, running, arm thrown back from the throw
   const [hx, hy, hs] = L.hero;

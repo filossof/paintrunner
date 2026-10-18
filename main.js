@@ -71,10 +71,26 @@
     const el = document.documentElement;
     const isFull = document.fullscreenElement || document.webkitFullscreenElement;
     try {
-      if (isFull) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-      else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+      if (isFull) { leavingOnPurpose = true; (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
+      else {
+        const req = (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+        // Esc should mean "menu", not "leave full screen": where the browser lets a page keep the Esc
+        // key (Chrome, Edge), it does; leaving full screen is then holding Esc
+        if (req && req.then) req.then(() => { if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(['Escape']).catch(() => { }); }).catch(() => { });
+      }
     } catch (e) { /* not supported */ }
   }
+  // Browsers that keep Esc for themselves leave full screen instead: then go to the menu anyway,
+  // as Esc would have (only from a level, so the full-screen button on the menu still just toggles)
+  let leavingOnPurpose = false;   // F or the full-screen button: just leave, stay in the level
+  function onFullscreenChange() {
+    const isFull = document.fullscreenElement || document.webkitFullscreenElement;
+    if (isFull) return;
+    if (leavingOnPurpose) { leavingOnPurpose = false; return; }
+    if (game.mode === 'play') { logAbandon(); game.mode = 'title'; game.menuIdx = game.levelIdx; keys.clear(); pressed.clear(); }
+  }
+  document.addEventListener('fullscreenchange', () => onFullscreenChange());
+  document.addEventListener('webkitfullscreenchange', () => onFullscreenChange());
 
   // ---------- input ----------
   const keys = new Set();
@@ -1170,7 +1186,7 @@
     // the Eraser himself, rubbing away at the edge
     if (typeof Story !== 'undefined' && Story.drawEraser) {
       const ey = Math.max(top + 90, Math.min(bottom - 80, w.player.y + 10)) + Math.sin(t * 9) * 14;
-      Story.drawEraser(ctx, ex - 20, ey, 1.05, t, 'grumpy');
+      Story.drawEraser(ctx, ex - 20, ey, 1.05, t);
     }
   }
   const drawTiles = (w) => ART.drawTiles(ctx, w, game.tick / 60, COLOR_HEX);

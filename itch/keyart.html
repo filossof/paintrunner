@@ -126,7 +126,7 @@ function draw() {
     ctx.save(); ctx.translate(x, y); ctx.rotate(hash(i, 3) * 3); ctx.beginPath(); ctx.ellipse(0, 0, s, s * 0.6, 0, 0, 7); ctx.fill(); ctx.restore();
   }
   const [erx, ery, ers] = L.eraser;
-  Story.drawEraser(ctx, erx, ery, ers, 0.06, 'grumpy');
+  Story.drawEraser(ctx, erx, ery, ers, 0.06);
 
   // ---------- title ----------
   const [tx, ty, ts] = L.title;

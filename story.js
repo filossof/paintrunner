@@ -78,35 +78,49 @@ const Story = (() => {
     SHOP.drawHero(g, CHARACTERS[0], { s: 1.6, col: C.blue, t: 0, run: 0, moving: 0, air: false, face: 1, squash: 1, ...o }, {});
     g.restore();
   }
-  // the Eraser: a big rubber eraser in a white top hat, with a grumpy face
-  function eraser(g, x, y, s, t, mood = 'grumpy') {
-    g.save(); g.translate(x, y); g.scale(s, s); g.rotate(-0.12 + Math.sin(t * 6) * 0.05);
-    g.lineJoin = 'round'; g.strokeStyle = INK; g.lineWidth = 3;
-    // body: rubber, with a paper sleeve
+  // the Eraser: a big rubber eraser in a white top hat, facing right (the way he chases you), and
+  // always furious: slanted brows, glaring eyes, a snarl of clenched teeth, red cheeks, steam
+  function eraser(g, x, y, s, t) {
+    g.save(); g.translate(x, y); g.scale(s, s); g.rotate(0.1 + Math.sin(t * 6) * 0.05);
+    g.lineJoin = 'round'; g.lineCap = 'round'; g.strokeStyle = INK; g.lineWidth = 3;
+    // body: rubber, with a paper sleeve at the back
     g.fillStyle = '#f7c6cf'; rr(g, -70, -40, 140, 80, 14); g.fill(); g.stroke();
-    g.fillStyle = '#dfe6f0'; rr(g, -18, -42, 76, 84, 6); g.fill(); g.stroke();
+    g.fillStyle = '#dfe6f0'; rr(g, -58, -42, 76, 84, 6); g.fill(); g.stroke();
     g.strokeStyle = 'rgba(28,28,31,0.35)'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(-8, -30); g.lineTo(48, -30); g.moveTo(-8, 30); g.lineTo(48, 30); g.stroke();
-    g.fillStyle = 'rgba(28,28,31,0.5)'; g.font = '800 13px ui-rounded, system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('ERASE', 20, 6);
-    // face on the rubber
+    g.beginPath(); g.moveTo(-48, -30); g.lineTo(8, -30); g.moveTo(-48, 30); g.lineTo(8, 30); g.stroke();
+    g.fillStyle = 'rgba(28,28,31,0.5)'; g.font = '800 13px ui-rounded, system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('ERASE', -20, 6);
+    // red-hot cheeks
+    g.fillStyle = 'rgba(255,59,78,0.35)';
+    for (const cx of [30, 58]) { g.beginPath(); g.ellipse(cx, 8, 7, 4, 0, 0, Math.PI * 2); g.fill(); }
+    // glaring eyes, looking ahead
     g.fillStyle = '#fff'; g.strokeStyle = INK; g.lineWidth = 2.4;
-    for (const ex of [-52, -32]) { g.beginPath(); g.ellipse(ex, -8, 7, 8, 0, 0, Math.PI * 2); g.fill(); g.stroke(); }
+    for (const ex of [32, 52]) { g.beginPath(); g.ellipse(ex, -8, 7, 7.5, 0, 0, Math.PI * 2); g.fill(); g.stroke(); }
     g.fillStyle = INK;
-    for (const ex of [-52, -32]) { g.beginPath(); g.arc(ex - 2, -6, 3.2, 0, Math.PI * 2); g.fill(); }
-    g.lineWidth = 3.5; g.beginPath();
-    if (mood === 'grumpy') { g.moveTo(-61, -22); g.lineTo(-45, -15); g.moveTo(-23, -22); g.lineTo(-39, -15); }
-    else { g.moveTo(-61, -18); g.lineTo(-45, -21); g.moveTo(-23, -18); g.lineTo(-39, -21); }
+    for (const ex of [32, 52]) { g.beginPath(); g.arc(ex + 2.5, -6, 3, 0, Math.PI * 2); g.fill(); }
+    // furious brows: thick, slanting down to the middle
+    g.lineWidth = 4.5; g.beginPath();
+    g.moveTo(22, -23); g.lineTo(40, -13); g.moveTo(62, -23); g.lineTo(44, -13);
     g.stroke();
-    g.lineWidth = 3; g.beginPath();
-    if (mood === 'grumpy') { g.moveTo(-52, 18); g.quadraticCurveTo(-42, 10, -32, 18); } else { g.moveTo(-54, 12); g.quadraticCurveTo(-42, 24, -30, 12); }
+    // a snarl: clenched teeth
+    g.fillStyle = '#fff'; g.lineWidth = 2.4;
+    rr(g, 31, 13, 24, 10, 3); g.fill(); g.stroke();
+    g.lineWidth = 1.4; g.beginPath(); g.moveTo(31, 18); g.lineTo(55, 18);
+    for (const tx of [37, 43, 49]) { g.moveTo(tx, 13); g.lineTo(tx, 23); }
     g.stroke();
-    // white top hat
-    g.save(); g.translate(-40, -40); g.rotate(-0.15);
+    // white top hat, tipped forward
+    g.strokeStyle = INK;
+    g.save(); g.translate(40, -40); g.rotate(0.15);
     g.fillStyle = '#fbfaf6'; g.lineWidth = 2.6;
     rr(g, -26, -4, 52, 8, 3); g.fill(); g.stroke();
     rr(g, -17, -42, 34, 40, 4); g.fill(); g.stroke();
     g.fillStyle = INK; g.fillRect(-17, -12, 34, 7);
     g.restore();
+    // steam puffing off his head
+    for (let k = 0; k < 3; k++) {
+      const p = (t * 1.6 + k / 3) % 1, sx = (k - 1) * 22 + 6 + Math.sin(p * 6 + k) * 4, sy = -90 - p * 40;
+      g.strokeStyle = `rgba(150,140,140,${0.6 * (1 - p)})`; g.lineWidth = 2;
+      g.beginPath(); g.arc(sx, sy, 5 + p * 8, 0, Math.PI * 2); g.stroke();
+    }
     g.restore();
   }
   function rr(g, x, y, w, h, r) {
@@ -227,7 +241,7 @@ const Story = (() => {
           if (x < -10) continue;
           g.fillStyle = `rgba(150,140,140,${0.5 * hash(i, 5)})`; g.beginPath(); g.ellipse(x, y, 2 + hash(i, 6) * 3, 1.5, hash(i, 7) * 3, 0, Math.PI * 2); g.fill();
         }
-        eraser(g, ex, ey, 1.25, t, 'grumpy');
+        eraser(g, ex, ey, 1.25, t);
       },
     },
     {
@@ -248,7 +262,7 @@ const Story = (() => {
           if (x > SW + 60) return;                         // marched off with the color: gone
           washer(g, x, y, 1.1, t + i, c);
         });
-        eraser(g, 150, 205, 0.8, t, 'smug');
+        eraser(g, 150, 215, 0.8, t);
       },
     },
     {
@@ -351,8 +365,8 @@ const Story = (() => {
         // he scurries off toward the hole, getting smaller, and is gone
         const q = Math.min(1, t / 4.5), k = q * q * (3 - 2 * q), x = 300 + k * 550, y = 300 - k * 30, sc = 0.9 - k * 0.75;
         if (k < 0.97) {
-          eraser(g, x, y, sc, t, 'smug');
-          can(g, x + 60 * sc, y - 10 * sc, 2.6 * sc, shimmer(t));
+          eraser(g, x, y, sc, t);
+          can(g, x - 82 * sc, y + 4 * sc, 2.6 * sc, shimmer(t));   // the stolen color, clutched behind him
         }
         hero(g, 170, ground(170) + 2, { t, face: 1, col: C.blue });
       },
@@ -454,7 +468,7 @@ const Story = (() => {
       const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
       if (cv.width !== Math.round(r.width * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
       g.setTransform(cv.width / SW, 0, 0, cv.height / SH, 0, 0);
-      const t = (now - start) / 1000;
+      const t = Math.max(0, (now - start) / 1000);   // (the first frame can be stamped a hair before the panel began)
       PANELS[idx].draw(g, t);
       // panels arrive through the paper
       fade = Math.min(1, fade + 0.06);
