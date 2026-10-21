@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")/.."
 rm -rf dist/itch && mkdir -p dist/itch
-cp index.html style.css config.js cloud.js characters.js shop.js levels.js daily.js achievements.js ghost.js art.js world.js audio.js ui.js main.js story.js splash.js dist/itch/
+cp index.html style.css config.js cloud.js characters.js shop.js levels.js daily.js achievements.js ghost.js chest.js art.js world.js audio.js ui.js main.js story.js splash.js dist/itch/
 cp -R vendor music dist/itch/
 rm -f dist/paintrunner-itch.zip
 (cd dist/itch && zip -qr ../paintrunner-itch.zip .)

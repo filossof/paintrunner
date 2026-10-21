@@ -1014,6 +1014,7 @@
   let achReady = false;
   function update() {
     game.tick++;
+    if (game.chest && game.mode === 'complete') stepChest(game.chest);
     // catch up on achievements earned before they existed, once the splash is gone
     if (!achReady && !document.getElementById('splash') && !(typeof Story !== 'undefined' && Story.playing)) { achReady = true; achCheck(); }
     if (game.shake > 0) game.shake--;
@@ -1845,83 +1846,34 @@
   }
 
   // ---------- the reward chest on the level-complete screen ----------
-  // Your Paint Drops wait in a chest: click it and they burst out and pour into your total.
+  // Your Paint Drops wait in the Captain's chest (chest.js), in the middle of the screen: click it and it
+  // shakes, bursts open, and the drops fountain up and rain into your total.
   function newChest(earned) {
-    game.chest = { opened: !earned || earned.total <= 0, at: 0, drops: [], got: 0, total: earned ? earned.total : 0 };
+    const total = earned ? earned.total : 0;
+    game.chest = Chest.make({ look: 'captain', anim: 'burst', total, x: W / 2, y: 0, counter: { x: W / 2, y: 0 }, scale: 0.75 });
+    if (total <= 0) game.chest.opened = true;
   }
   function openChest() {
     const ch = game.chest;
     if (!ch || ch.opened) return;
-    ch.opened = true; ch.at = game.tick;
-    sfx.can(); setTimeout(() => sfx.win(), 120);
-    const n = Math.min(36, 10 + Math.round(ch.total / 8));
-    for (let i = 0; i < n; i++) {
-      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.8, v = 5 + Math.random() * 5;
-      ch.drops.push({ x: 0, y: 0, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, fly: 24 + i * 2 + Math.random() * 10, done: false, col: Math.random() < 0.25 ? COLOR_HEX[ALL_COLORS[i % 5]] : '#2f9bff' });
-    }
-    ch.n = n;
+    Chest.open(ch); ch.at = game.tick;
+    sfx.can();
   }
-  // a wooden chest with gold bands, inked; lid = 0 shut ... 1 wide open
-  function drawChest(x, y, s, lid, glow) {
-    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-    if (glow > 0) {                                          // light pouring out
-      const g = ctx.createRadialGradient(0, -14, 4, 0, -14, 90);
-      g.addColorStop(0, `rgba(255,230,140,${0.85 * glow})`); g.addColorStop(1, 'rgba(255,230,140,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -14, 90, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = `rgba(255,236,160,${0.5 * glow})`; ctx.lineWidth = 3;
-      for (let k = 0; k < 7; k++) { const a = -Math.PI / 2 + (k - 3) * 0.32 + Math.sin(game.tick * 0.05 + k) * 0.04; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 20, -14 + Math.sin(a) * 20); ctx.lineTo(Math.cos(a) * 80, -14 + Math.sin(a) * 80); ctx.stroke(); }
-    }
-    ctx.lineJoin = 'round'; ctx.strokeStyle = INK; ctx.lineWidth = 3;
-    const wood = ctx.createLinearGradient(0, -14, 0, 26); wood.addColorStop(0, '#c07a3a'); wood.addColorStop(1, '#8a5222');
-    // body
-    ctx.fillStyle = wood; roundRect(-34, -14, 68, 40, 5); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = 'rgba(28,28,31,0.35)'; ctx.lineWidth = 1.5;
-    for (const yy of [-2, 10]) { ctx.beginPath(); ctx.moveTo(-32, yy); ctx.lineTo(32, yy); ctx.stroke(); }
-    if (lid > 0.05) {                                        // inside: a glowing pile of paint
-      ctx.fillStyle = '#2f9bff'; ctx.beginPath(); ctx.ellipse(0, -14, 30, 6, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.ellipse(-8, -15.5, 9, 2, 0, 0, Math.PI * 2); ctx.fill();
-    }
-    const gold = ctx.createLinearGradient(-34, 0, 34, 0); gold.addColorStop(0, '#c98a00'); gold.addColorStop(0.5, '#ffe27a'); gold.addColorStop(1, '#c98a00');
-    ctx.fillStyle = gold; ctx.strokeStyle = INK; ctx.lineWidth = 2;
-    for (const bx of [-26, 20]) { ctx.fillRect(bx, -14, 6, 40); ctx.strokeRect(bx, -14, 6, 40); }
-    // lid, hinged at the back
-    ctx.save(); ctx.translate(0, -14); ctx.scale(1, Math.cos(lid * 1.9)); ctx.translate(0, 0);
-    ctx.fillStyle = wood; ctx.strokeStyle = INK; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(-34, 0); ctx.lineTo(-34, -10); ctx.quadraticCurveTo(0, -30, 34, -10); ctx.lineTo(34, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = gold; ctx.lineWidth = 2;
-    for (const bx of [-26, 20]) { ctx.beginPath(); ctx.moveTo(bx, 0); ctx.lineTo(bx, -16 + Math.abs(bx) * 0.15); ctx.lineTo(bx + 6, -17 + Math.abs(bx) * 0.15); ctx.lineTo(bx + 6, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); }
-    ctx.restore();
-    if (lid < 0.05) { ctx.fillStyle = gold; roundRect(-6, -18, 12, 12, 3); ctx.fill(); ctx.stroke(); ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, -13, 2, 0, Math.PI * 2); ctx.fill(); }
-    ctx.restore();
+  function stepChest(ch) {
+    const launched = ch.n, landed = ch.landed;
+    Chest.step(ch, 1 / 60);
+    if (!launched && ch.n) sfx.win();                            // the burst
+    if (ch.landed > landed && ch.landed % 2) sfx.select();       // drops landing in the total
   }
-
-  function drawChestScene(ch, y0) {
+  function drawChestScene(ch, y0, counter) {
     if (!ch || (!ch.total && ch.opened)) return;
-    const cy = y0 + 5.5 * 40 + 8, since = game.tick - ch.at;
-    if (!ch.opened) {
-      // waiting to be opened: a little hop and a wiggle, and a hint
-      const hop = Math.abs(Math.sin(game.tick * 0.12)) * 6, wig = Math.sin(game.tick * 0.5) * (Math.sin(game.tick * 0.04) > 0.6 ? 0.08 : 0);
-      ctx.save(); ctx.translate(W / 2, cy - hop); ctx.rotate(wig);
-      drawChest(0, 0, 1.2, 0, 0.35 + 0.15 * Math.sin(game.tick * 0.1));
-      ctx.restore();
-      text(touchMode ? 'Tap the chest!' : 'Click the chest!', W / 2 + 78, cy - 6, 18, '#ffd166', 'left', 900);
-      return;
-    }
-    // opened: it slides aside, the lid swings up, the drops burst out and fly into the total
-    const slide = Math.min(1, since / 14), x = W / 2 - slide * 185, lid = Math.min(1, since / 10);
+    ch.y = y0 + 224; ch.counter = counter;
+    if (!ch.opened) text(touchMode ? 'Tap the chest!' : 'Click the chest!', W / 2 + 72, ch.y - 6, 18, '#ffd166', 'left', 900);
     // once every drop has landed, the empty chest fades away (the reward lines take its place)
-    if (ch.n && ch.got >= ch.n && !ch.emptyAt) ch.emptyAt = game.tick;
+    if (ch.done && !ch.emptyAt) ch.emptyAt = game.tick;
     const fade = ch.emptyAt ? Math.max(0, 1 - (game.tick - ch.emptyAt) / 18) : 1;
-    if (fade > 0) { ctx.globalAlpha = fade; drawChest(x, cy, 1.2, lid, Math.max(0, 1 - since / 120)); ctx.globalAlpha = 1; }
-    const tx = W / 2 - 40, ty = y0 + 5 * 40;
-    for (const d of ch.drops) {
-      if (d.done) continue;
-      d.t++;
-      if (d.t === 1) { d.x = x; d.y = cy - 20; }
-      if (d.t < d.fly) { d.vy += 0.35; d.x += d.vx; d.y += d.vy; }
-      else { d.x += (tx - d.x) * 0.22; d.y += (ty - d.y) * 0.22; if (Math.hypot(tx - d.x, ty - d.y) < 8) { d.done = true; ch.got++; if (ch.got % 2) sfx.select(); } }
-      SHOP.drawDrop(ctx, d.x, d.y, 6, d.col);
-    }
+    if (fade <= 0) return;
+    ctx.save(); ctx.globalAlpha = fade; Chest.draw(ctx, ch); ctx.restore();
   }
 
   // ---------- the play streak (daily.js) ----------
@@ -2071,17 +2023,18 @@
       if (game.mode === 'complete') {
         const r = game.lastResult;
         const e = r.earned || { rows: [], total: 0 };
-        const ch = game.chest || { opened: true, drops: [], n: 0, got: 0, total: 0 };
+        const ch = game.chest || { opened: true, done: true, shown: 0, total: 0 };
         // the Drops come out of the chest; the total counts up as they land
-        const shown = !ch.opened ? 0 : ch.n ? Math.round(e.total * Math.min(1, ch.got / ch.n)) : e.total;
-        const showRows = ch.opened && (!ch.n || ch.got >= ch.n);
+        const shown = !ch.opened ? 0 : ch.total ? ch.shown : e.total;
+        const showRows = ch.opened && (ch.done || !ch.total);
+        const showTotal = ch.opened && (ch.n || !ch.total);         // (while the chest shakes, it would cover the total)
         const y0 = drawPanel([
           [r.daily ? 'Daily complete!' : 'Level complete!', 46, '#fff', 900],
           ['', 34, '#ffd166', 900],   // the three paint cans are drawn across these two rows, below
           ['', 34, '#ffd166', 900],
           [`Time ${r.time.toFixed(3)}s${r.isBest ? '  ★ new best' : ''}`, 21, r.isBest ? '#ffd166' : '#fff', 600],
           [`Paint thrown: ${r.throws}   ·   Falls: ${r.deaths}`, 16, 'rgba(255,255,255,0.75)', 500],
-          [ch.opened ? `+${shown}  Paint Drops` : '', 26, '#7cc4ff', 900],
+          [showTotal ? `+${shown}  Paint Drops` : '', 26, '#7cc4ff', 900],
           [showRows ? e.rows.map(([label, n]) => (n === null ? label : `${label} +${n}`)).join('   ·   ') : '', 13, 'rgba(255,255,255,0.65)', 600],
           cloudLine(r),
           r.unlockedNow && r.unlockedNow.length
@@ -2089,14 +2042,16 @@
             : ['', 14, '#fff', 500],
           touchMode ? ['', 15, '#fff', 500] : [!ch.opened ? 'Click the chest or press ENTER to open it' : `ENTER: ${r.daily ? "today's board" : 'next level'}   ·   R: retry   ·   S: store   ·   Esc: menu`, 15, 'rgba(255,255,255,0.6)', 500],
         ], 40);
-        drawChestScene(ch, y0);
+        ctx.font = '900 26px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
+        const tw0 = ctx.measureText(`+${shown}  Paint Drops`).width;
+        drawChestScene(ch, y0, { x: W / 2 - tw0 / 2 - 20, y: y0 + 5 * 40 + 2 });
         if (touchMode) drawPanelButtons([['☰ Menu', 'Escape'], ['↺ Retry', 'KeyR'], [!ch.opened ? '🎁 Open' : r.daily ? 'Board ▶' : 'Next ▶', 'Enter']], y0 + 10 * 40);
         [0, 1, 2].forEach((i) => drawCan(W / 2 - 56 + i * 56, y0 + 62, 1.6, i < r.stars, COLOR_HEX[ALL_COLORS[i]]));
         if (r.newStars) text('new record!', W / 2 + 96, y0 + 62, 16, '#ffd166', 'left', 800);
         // a drop next to the total
         ctx.font = '900 26px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
         const tw = ctx.measureText(`+${shown}  Paint Drops`).width;
-        if (ch.opened && e.total > 0) SHOP.drawDrop(ctx, W / 2 - tw / 2 - 20, y0 + 5 * 40 + 2, 8);
+        if (showTotal && e.total > 0) SHOP.drawDrop(ctx, W / 2 - tw / 2 - 20, y0 + 5 * 40 + 2, 8);
       }
       if (game.mode === 'end') {
         drawPanel([
