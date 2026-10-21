@@ -36,7 +36,10 @@ const UI = (() => {
           </div>
         </div>`
       : `<button class="btn" data-act="signin">${GOOGLE_G}<span>Sign in with Google</span></button>`;
-    const left = `<button class="btn" data-act="boards">🏆 Leaderboards <small>(L)</small></button>` +
+    // the Daily: pulses with NEW until today's is done
+    const dailyDone = api.daily && api.daily().flags & 1;
+    const left = `<button class="btn daily${dailyDone ? '' : ' fresh'}" data-act="daily">📅 Daily${dailyDone ? ' ✓' : ' <b class="new-badge">NEW</b>'}</button>` +
+      `<button class="btn" data-act="boards">🏆 Leaderboards <small>(L)</small></button>` +
       `<button class="btn" data-act="chars">🎭 Characters <small>(C)</small></button>` +
       `<button class="btn" data-act="store">🛍️ Store <small>(S)</small></button>` +
       `<button class="btn" data-act="settings">⚙️ Settings</button>` +
@@ -67,6 +70,7 @@ const UI = (() => {
     if (act === 'store') openStore();
     if (act === 'settings') openSettings();
     if (act === 'ach') openAchievements();
+    if (act === 'daily') openDaily();
   });
   // the little account menu under your picture: closes on any press outside it
   function setAccountMenu(open) {
@@ -153,6 +157,78 @@ const UI = (() => {
     if (modal) modal.remove();
     modal = null;
     cancelAnimationFrame(charAnim);
+  }
+
+  // ---------- the Daily Chase ----------
+  // today's level, your streak and its rewards, the time until the next one, and today's board
+  const fmtLeft = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
+  const STREAK_PRIZES = ['50', '75', '100', '🎁', '150', '200', '300'];
+  function openDaily() {
+    if (modal) close();
+    const d = api.daily();
+    modal = document.createElement('div');
+    modal.className = 'modal-back';
+    const done = d.flags & 1, cans3 = d.flags & 2, podium = d.flags & 4;
+    const sc = d.streak, cycleDay = sc.count ? ((sc.count - 1) % 7) + 1 : 0;
+    // the row of 7 days the streak is in (after a full week, tomorrow starts the next row)
+    const weekStart = !sc.today && cycleDay === 7 ? sc.count : sc.count - cycleDay;
+    const milestones = [[7, 'streakblaze'], [14, 'laurel'], [30, 'livingpaint'], [100, 'supernova']];
+    const cell = (i) => {
+      const n = weekStart + i + 1, got = n <= sc.count, isNext = !sc.today && n === sc.count + 1;
+      const ms = milestones.find(([m]) => m === n), prize = ms ? '🔥' : STREAK_PRIZES[i];
+      return `<div class="sd${got ? ' got' : ''}${isNext ? ' next' : ''}"><small>Day ${n}</small><b>${got ? '✓' : prize === '🎁' || prize === '🔥' ? prize : prize + ' 💧'}</b></div>`;
+    };
+    modal.innerHTML = `
+      <div class="modal daily" role="dialog" aria-modal="true" aria-labelledby="daily-title" style="max-width:720px">
+        <div class="modal-head">
+          <h2 id="daily-title">📅 Daily Chase</h2>
+          <span class="daily-left">New one in ${fmtLeft(d.msToNext)}</span>
+          <button class="close" data-act="close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="daily-card">
+            <div>
+              <h3>${esc(d.name)}</h3>
+              <p class="daily-meta">${d.colors.map((c) => `<i style="background:${c}"></i>`).join('')} <span>${d.screens.toFixed(1)} screens · the same level for everyone today</span></p>
+              <p class="daily-rewards">
+                <span class="${done ? 'claimed' : ''}">${done ? '✓' : '+100 💧'} Finish it</span>
+                <span class="${cans3 ? 'claimed' : ''}">${cans3 ? '✓' : '+50 💧'} All 3 cans</span>
+                <span class="${podium ? 'claimed' : ''}">${podium ? '✓' : '🥇🥈🥉'} Top 3 today</span>
+              </p>
+              ${d.best !== null ? `<p class="daily-best">Your best today: <b>${d.best.toFixed(3)}s</b></p>` : ''}
+            </div>
+            <button class="btn big daily-play" data-act="play-daily">▶ ${done ? 'Play again' : 'Play'}</button>
+          </div>
+          <section class="streak">
+            <h3>🔥 ${sc.count ? `${sc.count}-day streak` : 'Start a streak'} <small>${sc.today ? 'today counted ✓' : 'finish any level today to keep it going'} · best ${sc.best}</small></h3>
+            <div class="streak-row">${[0, 1, 2, 3, 4, 5, 6].map(cell).join('')}</div>
+            <p class="note">${sc.saver ? '🪣 Streak saver ready: one missed day a week is forgiven.' : '🪣 Streak saver used this week.'} Special rewards:
+              ${milestones.map(([m, id]) => `<span class="ms${d.owned(id) ? ' own' : ''}">${m} days: ${esc(SHOP.byId[id].name)}${d.owned(id) ? ' ✓' : ''}</span>`).join(' ')}</p>
+          </section>
+          <section>
+            <h3>🏁 Today's fastest</h3>
+            <div class="daily-board"><p class="note">Loading…</p></div>
+          </section>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal || e.target.closest('[data-act="close"]')) return close();
+      if (e.target.closest('[data-act="play-daily"]')) { close(); api.playDaily(); }
+    });
+    modal.querySelector('.daily-play').focus();
+    // today's board
+    const board = modal.querySelector('.daily-board'), uid = Cloud.user && Cloud.user.uid;
+    if (!Cloud.available) { board.innerHTML = '<p class="note">The leaderboard is offline right now.</p>'; return; }
+    Cloud.dailyTop(d.day, 10).then(({ rows, me }) => {
+      if (!document.body.contains(board)) return;
+      const medal = (rank) => ['🥇', '🥈', '🥉'][rank - 1] || `${rank}.`;
+      board.innerHTML = rows.length ? `<ol>${rows.map((r) => `<li class="${r.uid === uid ? 'me' : ''}"><span class="rk">${medal(r.rank)}</span>${r.photo ? avatar(r.photo) : ''}<span class="nm">${esc(r.name)}</span><span class="tm">${r.time.toFixed(3)}s</span></li>`).join('')}</ol>`
+        : '<p class="note">Nobody has finished today\'s chase yet. Be the first!</p>';
+      if (!uid) board.insertAdjacentHTML('beforeend', `<p class="note">Want your name up here? <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google</button></p>`);
+      else if (me && !rows.some((r) => r.uid === uid)) board.insertAdjacentHTML('beforeend', `<p class="note">Your best today: ${me.time.toFixed(3)}s</p>`);
+    }).catch((e) => { if (document.body.contains(board)) board.innerHTML = `<p class="note">${friendlyError(e)}</p>`; });
+    board.addEventListener('click', (e) => { if (e.target.closest('[data-act="signin"]')) signIn(); });
   }
 
   // ---------- achievements ----------
@@ -406,7 +482,7 @@ const UI = (() => {
     const btn = (it) => {
       if (wl.equipped[it.cat] === it.id) return `<span class="buy equipped" data-unequip="${it.id}">✓ Equipped · take off</span>`;
       if (wl.owned.includes(it.id)) return `<span class="buy owned" data-equip="${it.id}">Equip</span>`;
-      if (it.exclusive) return `<span class="buy poor">🏅 Unlock every achievement</span>`;
+      if (it.exclusive) return `<span class="buy poor">${it.how || '🏅 A special reward'}</span>`;
       if (wl.drops < it.price.drops) return `<span class="buy poor">💧 ${fmtN(it.price.drops)} · need ${fmtN(it.price.drops - wl.drops)} more</span>`;
       return `<span class="buy" data-buy="${it.id}">💧 ${fmtN(it.price.drops)} · Buy</span>`;
     };
@@ -658,6 +734,7 @@ const UI = (() => {
     openSettings,
     openGhostIntro,
     openAchievements,
+    openDaily,
     refresh: () => render(),
     get modalOpen() { return !!modal; },
     // true right after a press that only closed the account menu: the game ignores that press

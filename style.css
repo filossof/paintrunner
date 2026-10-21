@@ -585,3 +585,45 @@ body.touch .set-sec + .set-sec { margin-top: 10px; padding-top: 10px; }
 #story .st-dots i { width: 9px; height: 9px; border-radius: 50%; border: 2px solid #1c1c1f; background: rgba(255,255,255,0.7); }
 #story .st-dots i.on { background: #1c1c1f; }
 @media (prefers-reduced-motion: reduce) { #story .st-next.on { animation: none; } }
+
+/* ---------- the Daily Chase ---------- */
+.btn.daily { background: #fff6d6; }
+.btn.daily.fresh { animation: daily-pulse 1.6s ease-in-out infinite; }
+.btn.daily .new-badge { font: 900 10px var(--font); background: var(--red); color: #fff; border-radius: 999px; padding: 1px 6px; margin-left: 4px; letter-spacing: 0.04em; }
+@keyframes daily-pulse { 50% { box-shadow: 3px 3px 0 var(--ink), 0 0 0 6px rgba(255,201,60,0.55); } }
+@media (prefers-reduced-motion: reduce) { .btn.daily.fresh { animation: none; } }
+.daily .daily-left { font: 700 13px var(--font); color: var(--ink-2); margin-right: 8px; }
+.daily-card { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; background: #fff; border: 2px solid var(--ink); border-radius: 14px; padding: 14px 16px; box-shadow: 3px 3px 0 var(--ink); }
+.daily-card h3 { margin: 0 0 4px; font: 900 20px var(--font); }
+.daily-meta { margin: 0 0 8px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); }
+.daily-meta i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ink); display: inline-block; }
+.daily-meta span { margin-left: 6px; }
+.daily-rewards { margin: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.daily-rewards span { font: 800 12.5px var(--font); background: #fff6d6; border: 1.5px solid var(--gold); border-radius: 999px; padding: 3px 10px; }
+.daily-rewards span.claimed { background: #e3f8ea; border-color: var(--green); color: #138a4b; }
+.daily-best { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
+.daily-play { font-size: 20px; padding: 14px 26px; background: var(--yellow); }
+.daily section { margin-top: 16px; }
+.daily section h3 { margin: 0 0 8px; font: 800 16px var(--font); }
+.daily section h3 small { font-weight: 600; font-size: 12.5px; color: var(--ink-2); margin-left: 6px; }
+.streak-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.sd { background: #fff; border: 2px solid var(--line, #c9c5bb); border-radius: 10px; padding: 6px 2px; text-align: center; display: grid; gap: 2px; }
+.sd small { font: 700 11px var(--font); color: var(--ink-2); }
+.sd b { font: 900 14px var(--font); }
+.sd.got { background: #ffe9c2; border-color: #ff8c1a; }
+.sd.got b { color: #c25e00; }
+.sd.next { border-color: var(--ink); border-style: dashed; animation: daily-pulse 1.6s ease-in-out infinite; }
+.streak .note .ms { display: inline-block; margin: 2px 6px 0 0; padding: 1px 8px; border-radius: 999px; background: rgba(0,0,0,0.05); font-weight: 700; }
+.streak .note .ms.own { background: #e3f8ea; color: #138a4b; }
+.daily-board ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.daily-board li { display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 10px; padding: 6px 10px; border: 1.5px solid rgba(0,0,0,0.08); }
+.daily-board li.me { border-color: var(--gold); background: #fff6d6; }
+.daily-board .rk { width: 30px; text-align: center; font: 900 16px var(--font); }
+.daily-board .nm { flex: 1; font-weight: 700; }
+.daily-board .tm { font: 800 14px var(--font); font-variant-numeric: tabular-nums; }
+.daily-board .avatar { width: 22px; height: 22px; }
+@media (max-width: 560px), (max-height: 500px) {
+  .daily-card { grid-template-columns: 1fr; }
+  .daily-play { justify-self: start; padding: 10px 20px; font-size: 17px; }
+  .sd b { font-size: 12px; }
+}

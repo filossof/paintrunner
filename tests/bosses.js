@@ -29,14 +29,16 @@ const fight = (ids, xEnd) => (w, m) => {
   if ((m.t = (m.t || 0) + 1) > 2400) return { fail: 'stuck among the monsters' };
   // a low step right ahead: hop it
   const stepAhead = p.grounded && w.solid(Math.floor((p.x + p.w + 6) / T), Math.floor((p.y + p.h - 6) / T));
-  const alive = ids.filter((i) => w.monsters[i].alive);
+  // only Inkies still ahead of us matter (one we've already jumped past is left behind)
+  const alive = ids.filter((i) => w.monsters[i].alive && w.monsters[i].x + w.monsters[i].w > p.x - 4);
   if (!alive.length) return cx >= xEnd && p.grounded ? DONE : { right: cx < xEnd, down: !stepAhead, jump: stepAhead || (!p.grounded && p.vy < 0) };
   const i = alive.sort((a, b) => Math.abs(w.monsters[a].x - p.x) - Math.abs(w.monsters[b].x - p.x))[0], q = w.monsters[i];
   const qx = q.x + q.w / 2, d = qx - cx;
   if (p.grounded) {
-    if (stepAhead && d > 0) return { jump: true, right: true };
+    // hop the fence only when the Inky behind it is out of the way
+    if (stepAhead && d > 0) return (d > 7 * T || (d > 3.6 * T && q.vx > 0)) ? { jump: true, right: true } : { down: true };
     const closing = Math.max(0.5, p.vx - q.vx);         // how fast the gap shrinks (it may be coming at us)
-    if (Math.abs(p.vx) > 3.2 && d > 0 && d < closing * 22 + 10) return { jump: true, right: true };
+    if (Math.abs(p.vx) > 3.2 && d > 0 && d < closing * 30 + 6) return { jump: true, right: true };
     return { right: d > 0, left: d < 0, down: true };
   }
   const g = 0.6, dy = q.y - (p.y + p.h);
@@ -98,28 +100,34 @@ const ROUTE = {
   ],
   portal: (o) => [
     S.walk((o + 1.5) * T),
-    S.paint(target.portal(o + 2, 14, 'top'), PURPLE, `portal in ${o + 2}`),
+    // the exit first, then the entrance: so the new entrance never pairs with an old exit behind us
     S.paint(target.portalInto(o + 7, o + 13), PURPLE, `portal out ${o}`),
+    S.paint(target.portal(o + 2, 14, 'top'), PURPLE, `portal in ${o + 2}`),
     S.fn(enter(o + 2)),
   ],
   monsters: (o, p, i) => [S.fn(fight(i, (o + p.w) * T))],
   end: () => [S.toFlag()],
 };
 
-const R = {};
-for (const def of [FIRST_CHASE, ...BOSSES]) {
+// plays one chase level with the bot; returns the run result plus how far behind the Eraser was
+function runChase(def, trace) {
   const w = new World(def);
   let mi = 0;
   const steps = def.parts.flatMap((p) => {
     const fn = ROUTE[p.kind];
     const w2 = p.w || { run: 7, wall: 10, pit: 18, climb: 11, ceiling: 22, tunnel: 15, portal: 15, monsters: 15, end: 8 }[p.kind];
-    if (p.kind === 'monsters') { const ids = [mi, mi + 1]; mi += 2; return fn(p.o, { w: w2 }, ids); }
+    if (p.kind === 'monsters') { const n = p.one ? 1 : 2, ids = [...Array(n).keys()].map((k) => mi + k); mi += n; return fn(p.o, { w: w2 }, ids); }
     return fn(p.o, { w: w2 });
   });
-  const r = run(w, steps, { max: 30000, trace: process.env.TRACE === def.name ? (w, a, f, i) => { if (f % (+process.env.EVERY || 30) === 0) console.log(f, i, JSON.stringify(a), (w.player.x / T).toFixed(1), (w.player.y / T).toFixed(1), 'eraser', (w.chaseX() / T).toFixed(1), 'M', w.monsters.filter(q => q.alive).map(q => (q.x / T).toFixed(1) + '/' + q.vx.toFixed(1)).join(' '), process.env.COL ? 'col' + process.env.COL + ':' + w.level.paint.map(r => r[+process.env.COL]).join('') : ''); } : undefined });
+  const r = run(w, steps, { max: 40000, trace });
   r.lead = ((w.player.x - w.chaseX()) / T).toFixed(1);
   r.secs = (w.frame / 60).toFixed(1);
-  R[def.name] = r;
+  return r;
 }
-module.exports = { R };
+
+const R = {};
+for (const def of [FIRST_CHASE, ...BOSSES]) {
+  R[def.name] = runChase(def, process.env.TRACE === def.name ? (w, a, f, i) => { if (f % (+process.env.EVERY || 30) === 0) console.log(f, i, JSON.stringify(a), (w.player.x / T).toFixed(1), (w.player.y / T).toFixed(1), 'eraser', (w.chaseX() / T).toFixed(1)); } : undefined);
+}
+module.exports = { R, runChase };
 if (require.main === module) for (const [n, r] of Object.entries(R)) console.log(r.won ? `PASS  ${n}: ${r.secs}s, cans ${r.cans}/3, Eraser ${r.lead} columns behind` : `FAIL  ${n}: ${JSON.stringify(r)}`);

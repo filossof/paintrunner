@@ -384,7 +384,7 @@
       const key = Cloud.levelKey(l.name), b = prog[key];
       return b ? `<tr><td>${i + 1}. ${esc(l.name)}</td><td class="num">${fmtTime(b.t)}</td><td class="num stars">${'★'.repeat(b.s || 0)}</td></tr>` : '';
     }).join('');
-    const last = p.runs.slice(0, 10).map((r) => `<tr><td>${ago(r.at)}</td><td>${r.levelIdx + 1}. ${esc(r.level)}</td>
+    const last = p.runs.slice(0, 10).map((r) => `<tr><td>${ago(r.at)}</td><td>${r.levelIdx < 0 ? "📅" : r.levelIdx + 1 + "."} ${esc(r.level)}</td>
       <td>${r.completed ? '✅' : '🏳️'}</td><td class="num">${dur(r.played || r.time)}</td><td class="num">${r.deaths}</td></tr>`).join('');
     const sess = p.sessions.filter((s) => s.seconds > 0).slice(0, 6).map((s) => `<tr><td>${new Date(s.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
       <td class="num">${dur(s.seconds)}</td><td class="num">${num(s.levels || 0)}</td></tr>`).join('');
@@ -404,7 +404,7 @@
     box.innerHTML = `<div class="table-wrap"><table>
         <thead><tr><th>When</th><th>Player</th><th>Level</th><th>Result</th><th class="num">Time</th><th class="num">Time spent</th><th class="num">Stars</th><th class="num">Deaths</th><th class="num">Throws</th></tr></thead>
         <tbody>${rows.map((r) => `<tr>
-          <td title="${esc(new Date(r.at).toLocaleString())}">${ago(r.at)}</td><td>${esc(r.name)}</td><td>${r.levelIdx + 1}. ${esc(r.level)}</td>
+          <td title="${esc(new Date(r.at).toLocaleString())}">${ago(r.at)}</td><td>${esc(r.name)}</td><td>${r.levelIdx < 0 ? "📅" : r.levelIdx + 1 + "."} ${esc(r.level)}</td>
           <td>${r.completed ? '✅ cleared' : '🏳️ gave up'}</td>
           <td class="num">${fmtTime(r.time)}</td><td class="num">${dur(r.played)}</td><td class="num stars">${'★'.repeat(r.stars || 0)}</td>
           <td class="num">${r.deaths}</td><td class="num">${r.throws}</td></tr>`).join('')}</tbody>

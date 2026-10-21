@@ -26,7 +26,9 @@ const SHOP = (() => {
     { id: 'viking', cat: 'hat', name: 'Viking helmet', price: { drops: 700 }, rarity: 'epic' },
     { id: 'halo', cat: 'hat', name: 'Halo', price: { drops: 900 }, rarity: 'legend' },
     // can't be bought: it's the reward for unlocking every achievement
-    { id: 'trophy', cat: 'hat', name: 'Golden Trophy', price: { drops: 0 }, rarity: 'legend', exclusive: true },
+    { id: 'trophy', cat: 'hat', name: 'Golden Trophy', price: { drops: 0 }, rarity: 'legend', exclusive: true, how: '🏅 Unlock every achievement' },
+    // can't be bought either: rewards for a long play streak
+    { id: 'laurel', cat: 'hat', name: 'Golden Laurel', price: { drops: 0 }, rarity: 'legend', exclusive: true, how: '🔥 Play 14 days in a row' },
     { id: 'sparkle', cat: 'trail', name: 'Sparkles', price: { drops: 400 }, rarity: 'rare' },
     { id: 'notes', cat: 'trail', name: 'Music notes', price: { drops: 600 }, rarity: 'rare' },
     { id: 'flames', cat: 'trail', name: 'Flames', price: { drops: 700 }, rarity: 'epic' },
@@ -35,6 +37,7 @@ const SHOP = (() => {
     { id: 'lovetrail', cat: 'trail', name: 'Hearts', price: { drops: 450 }, rarity: 'rare' },
     { id: 'drips', cat: 'trail', name: 'Paint drips', price: { drops: 500 }, rarity: 'rare' },
     { id: 'comet', cat: 'trail', name: 'Comet', price: { drops: 750 }, rarity: 'epic' },
+    { id: 'streakblaze', cat: 'trail', name: 'Streak Blaze', price: { drops: 0 }, rarity: 'legend', exclusive: true, how: '🔥 Play 7 days in a row' },
     { id: 'candy', cat: 'skin', name: 'Bubblegum', price: { drops: 500 }, rarity: 'rare', body: '#ff6fae' },
     { id: 'ghost', cat: 'skin', name: 'Ghost', price: { drops: 900 }, rarity: 'epic', body: 'rgba(40,40,60,0.42)' },
     { id: 'chrome', cat: 'skin', name: 'Chrome', price: { drops: 1200 }, rarity: 'epic', body: '#8c95a1', shine: true },
@@ -43,6 +46,7 @@ const SHOP = (() => {
     { id: 'sunset', cat: 'skin', name: 'Sunset', price: { drops: 600 }, rarity: 'rare', body: '#ff7a3d' },
     { id: 'galaxy', cat: 'skin', name: 'Galaxy', price: { drops: 1000 }, rarity: 'epic', body: '#3b2a8f' },
     { id: 'ice', cat: 'skin', name: 'Ice crystal', price: { drops: 1300 }, rarity: 'legend', body: '#7cc9ee', shine: true },
+    { id: 'livingpaint', cat: 'skin', name: 'Living Paint', price: { drops: 0 }, rarity: 'legend', body: '#2f7bff', cycle: true, exclusive: true, how: '🔥 Play 30 days in a row' },
     { id: 'stars', cat: 'splat', name: 'Star splats', price: { drops: 300 }, rarity: 'common' },
     { id: 'hearts', cat: 'splat', name: 'Heart splats', price: { drops: 300 }, rarity: 'common' },
     { id: 'pixel', cat: 'splat', name: 'Pixel splats', price: { drops: 500 }, rarity: 'rare' },
@@ -56,6 +60,7 @@ const SHOP = (() => {
     { id: 'confetti', cat: 'pop', name: 'Confetti pop', price: { drops: 300 }, rarity: 'common' },
     { id: 'popbubbles', cat: 'pop', name: 'Bubble pop', price: { drops: 350 }, rarity: 'common' },
     { id: 'fireworks', cat: 'pop', name: 'Fireworks', price: { drops: 650 }, rarity: 'epic' },
+    { id: 'supernova', cat: 'pop', name: 'Paint Supernova', price: { drops: 0 }, rarity: 'legend', exclusive: true, how: '🔥 Play 100 days in a row' },
   ];
   const byId = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
 
@@ -150,6 +155,20 @@ const SHOP = (() => {
       ctx.beginPath(); ctx.arc(9.5, -16, 3.6, Math.PI * 1.5, Math.PI * 0.5); ctx.stroke();
       ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(-6, -19, 2, 7);
       if (((t * 0.8) % 1) < 0.25) { ctx.fillStyle = '#fff'; star(ctx, 7, -22, 2.4, t); ctx.fill(); }
+    } else if (id === 'laurel') {
+      // a golden victory wreath: two branches of leaves curling around the head, a red ribbon at the back
+      const g = ctx.createLinearGradient(-12, -10, 12, 4); g.addColorStop(0, '#fff3a0'); g.addColorStop(0.5, '#ffc93c'); g.addColorStop(1, '#c98a00');
+      ctx.lineWidth = 1.2;
+      for (const side of [-1, 1]) {
+        for (let k = 0; k < 5; k++) {
+          const a = Math.PI * (0.98 - k * 0.11), x = side * Math.cos(a) * 11.5 * -1, y = 2 - Math.sin(a) * 7.5;
+          ctx.save(); ctx.translate(x, y); ctx.rotate(side * (0.9 - k * 0.32));
+          ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, -2.6, 1.9, 3.6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.restore();
+        }
+      }
+      ctx.fillStyle = '#ff3b4e'; ctx.beginPath(); ctx.moveTo(-face * 9, 3); ctx.lineTo(-face * 14, 9); ctx.lineTo(-face * 11, 4); ctx.lineTo(-face * 13, 10); ctx.lineTo(-face * 8, 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+      if (((t * 0.6) % 1) < 0.2) { ctx.fillStyle = '#fff'; star(ctx, 9, -6, 2.2, t); ctx.fill(); }
     } else if (id === 'beanie') {
       ctx.fillStyle = '#1fc160';
       ctx.beginPath(); ctx.ellipse(0, 0, 11.5, 11, 0, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -199,11 +218,11 @@ const SHOP = (() => {
   function stepTrail(tr, id, x, y, dt, s = 1, scroll = 0, emit = true) {
     if (!id) { tr.parts.length = 0; return; }
     if (emit) tr.acc += dt; else tr.acc = 0;
-    const every = { sparkle: 0.05, notes: 0.22, flames: 0.03, rainbow: 0.016, bubbles: 0.09, lovetrail: 0.1, drips: 0.07, comet: 0.012 }[id];
+    const every = { sparkle: 0.05, notes: 0.22, flames: 0.03, rainbow: 0.016, bubbles: 0.09, lovetrail: 0.1, drips: 0.07, comet: 0.012, streakblaze: 0.022 }[id];
     while (tr.acc > every) {
       tr.acc -= every;
       const p = { x: x + (Math.random() - 0.5) * 4 * s, y: y + (Math.random() - 0.5) * 10 * s, life: 1, rot: Math.random() * 6, c: PAINTS[Math.floor(Math.random() * 5)] };
-      if (id === 'flames') p.vy = (-20 - Math.random() * 30) * s;
+      if (id === 'flames' || id === 'streakblaze') p.vy = (-20 - Math.random() * 30) * s;
       if (id === 'notes') { p.vy = -16 * s; p.ch = Math.random() < 0.5 ? '♪' : '♫'; }
       if (id === 'rainbow') { p.x = x; p.y = y; }
       if (id === 'bubbles') p.vy = (-10 - Math.random() * 14) * s;
@@ -241,6 +260,12 @@ const SHOP = (() => {
         const r = 6 * s * p.life + 1;
         const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
         g.addColorStop(0, '#fff2a8'); g.addColorStop(0.5, '#ff8c1a'); g.addColorStop(1, 'rgba(255,59,78,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      if (id === 'streakblaze') {                         // flames in every paint color, white-hot at the core
+        const r = (7 * p.life + 1) * s;
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+        g.addColorStop(0, '#ffffff'); g.addColorStop(0.35, p.c); g.addColorStop(1, 'rgba(255,255,255,0)');
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
       }
       if (id === 'notes') { ctx.fillStyle = p.c; ctx.font = `700 ${11 * s}px Fredoka, ui-rounded, sans-serif`; ctx.fillText(p.ch, p.x, p.y); }
@@ -347,13 +372,17 @@ const SHOP = (() => {
 
   // ---------------- pop effects (when you fall) ----------------
   function burst(list, id, x, y, s = 1) {
-    const n = { confetti: 36, fireworks: 48, popbubbles: 18 }[id] || 22;
+    const n = { confetti: 36, fireworks: 48, popbubbles: 18, supernova: 30 }[id] || 22;
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, v = (60 + Math.random() * 120) * s;
       const p = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80 * s, life: 1, rot: Math.random() * 6, c: id === 'confetti' ? PAINTS[i % 5] : INK, w: (id === 'confetti' ? 5 + Math.random() * 4 : 4 + Math.random() * 4) * s };
       if (id === 'fireworks') {            // two rings of colored sparks
         const ring = i % 2 ? 150 : 95, b = (i / n) * Math.PI * 2;
         Object.assign(p, { vx: Math.cos(b) * ring * s, vy: Math.sin(b) * ring * s - 40 * s, c: PAINTS[Math.floor(i / 2) % 5], w: 3.2 * s, g: 70 });
+      }
+      if (id === 'supernova') {            // a ring of paint drops in every color, flung out fast
+        const ang = (i / 30) * Math.PI * 2, sp = (130 + (i % 3) * 60) * s;
+        Object.assign(p, { vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 40 * s, c: PAINTS[i % 5], w: (5 + (i % 3) * 2) * s, g: 160 });
       }
       if (id === 'popbubbles') Object.assign(p, { vx: (Math.random() - 0.5) * 90 * s, vy: (-30 - Math.random() * 60) * s, w: (5 + Math.random() * 7) * s, g: -20 });
       list.push(p);
@@ -368,6 +397,7 @@ const SHOP = (() => {
       ctx.globalAlpha = Math.min(1, p.life * 1.5); ctx.fillStyle = p.c;
       if (id === 'confetti') { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillRect(-p.w / 2, -p.w / 4, p.w, p.w / 2); ctx.restore(); }
       else if (id === 'fireworks') { star(ctx, p.x, p.y, p.w * (0.6 + p.life * 0.6), p.rot); ctx.fill(); }
+      else if (id === 'supernova') drawDrop(ctx, p.x, p.y, p.w * (0.5 + p.life * 0.5), p.c);
       else if (id === 'popbubbles') {
         ctx.fillStyle = 'rgba(160,215,255,0.25)'; ctx.strokeStyle = 'rgba(70,140,220,0.85)'; ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.w / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -381,9 +411,16 @@ const SHOP = (() => {
   // ---------------- a character wearing a look ----------------
   // ctx is already translated to the character's feet. look = { hat, skin }.
   let shineCanvas = null;
+  // a color between the five paints, flowing over time (the Living Paint skin)
+  function flowingPaint(t) {
+    const k = ((t * 0.35) % 1) * 5, i = Math.floor(k), f = k - i;
+    const a = parseInt(PAINTS[i % 5].slice(1), 16), b = parseInt(PAINTS[(i + 1) % 5].slice(1), 16);
+    const mix = (sh) => Math.round(((a >> sh) & 255) * (1 - f) + ((b >> sh) & 255) * f);
+    return `rgb(${mix(16)},${mix(8)},${mix(0)})`;
+  }
   function drawHero(ctx, ch, o, look) {
     const skin = look.skin ? byId[look.skin] : null;
-    const opts = { ...o, body: skin ? skin.body : undefined };
+    const opts = { ...o, body: skin ? (skin.cycle ? flowingPaint(o.t || 0) : skin.body) : undefined };
     if (skin && skin.shine && typeof document !== 'undefined') {
       // draw into a scratch canvas so the moving shine only lands on the character
       const m = ctx.getTransform();

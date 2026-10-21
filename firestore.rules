@@ -56,6 +56,16 @@ service cloud.firestore {
         && request.resource.data.time >= get(/databases/$(database)/documents/pr_levels/$(level)/pr_scores/$(uid)).data.bestTime;
     }
 
+    // The Daily Chase: one row per player per day, their best time. Public to read.
+    match /pr_daily/{day}/pr_scores/{uid} {
+      allow read: if true;
+      allow create, update: if member() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && request.resource.data.time is number && request.resource.data.time >= 1
+        && request.resource.data.stars is int && request.resource.data.stars >= 0 && request.resource.data.stars <= 3;
+    }
+
     // Play sessions (one per visit: how long people actually play), for the stats page. Guests too.
     match /pr_sessions/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid

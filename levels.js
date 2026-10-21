@@ -1206,7 +1206,7 @@ const PIECES = {
   // a metal wall up to the ceiling: open a purple portal on each side
   portal: { w: 15, build: (g, o) => g.fill(o + 5, o + 6, 6, 13, 'M') },
   // two Inkies patrolling
-  monsters: { w: 15, build: (g, o) => { g.fill(o + 1, o + 1, 13, 13, '#'); g.fill(o + 13, o + 13, 13, 13, '#'); g.monster(o + 6, -1); g.monster(o + 10, 1); } },
+  monsters: { w: 15, build: (g, o, opt) => { g.fill(o + 1, o + 1, 13, 13, '#'); g.fill(o + 13, o + 13, 13, 13, '#'); g.monster(o + 6, -1); if (!opt.one) g.monster(o + 10, 1); } },
   end: { w: 8, build: (g, o) => { g.at(o + 5, 13, 'F'); } },
 };
 function chaseLevel({ name, world, colors, hint, speed, delay, parts, boss = true, touchSpeed, signs, tips }) {
@@ -1270,6 +1270,56 @@ const BOSSES = [
 ];
 for (const b of BOSSES) LEVEL_DEFS.push(b);
 
+// ---------- the Daily Chase: a new chase every day, built from the date ----------
+// The same date gives everyone the same level. The week has a rhythm: Monday is short and
+// blue-only; each day adds a color, length and speed; Sunday is the long, all-colors monster.
+const DAILY_WEEK = {   // by weekday (0 = Sunday): colors, pieces, Eraser speed (computer / touch), countdown
+  1: { name: 'Monday', colors: [BLUE], pieces: 6, speed: 1.55, touch: 1.3, delay: 300, world: 0 },
+  2: { name: 'Tuesday', colors: [BLUE, RED], pieces: 7, speed: 1.7, touch: 1.45, delay: 270, world: 1 },
+  3: { name: 'Wednesday', colors: [BLUE, RED, GREEN], pieces: 8, speed: 1.8, touch: 1.5, delay: 240, world: 2 },
+  4: { name: 'Thursday', colors: [BLUE, RED, GREEN, YELLOW], pieces: 9, speed: 1.9, touch: 1.6, delay: 240, world: 3 },
+  5: { name: 'Friday', colors: [BLUE, RED, GREEN, YELLOW, PURPLE], pieces: 10, speed: 2.0, touch: 1.7, delay: 210, world: 4 },
+  6: { name: 'Saturday', colors: [BLUE, RED, GREEN, YELLOW, PURPLE], pieces: 11, speed: 2.1, touch: 1.75, delay: 210, world: 5 },
+  0: { name: 'Sunday', colors: [BLUE, RED, GREEN, YELLOW, PURPLE], pieces: 13, speed: 2.2, touch: 1.85, delay: 180, world: 5 },
+};
+const PIECE_COLOR = { wall: BLUE, pit: RED, climb: GREEN, ceiling: GREEN, tunnel: YELLOW, portal: PURPLE, monsters: null };
+function dailyLevel(day, weekday) {
+  const spec = DAILY_WEEK[weekday];
+  // a little random number generator seeded by the date
+  let seed = [...day].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) >>> 0, 2166136261);
+  const rnd = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const pool = Object.keys(PIECE_COLOR).filter((k) => PIECE_COLOR[k] === null || spec.colors.includes(PIECE_COLOR[k]));
+  // every color of the day shows up at least once, then the rest at random (never the same piece twice
+  // in a row, and at most one long ceiling)
+  const must = pool.filter((k) => k !== 'monsters' && k !== 'ceiling').sort(() => rnd() - 0.5);
+  if (spec.colors.includes(GREEN) && rnd() < 0.6) must.push('ceiling');
+  const pieces = [];
+  const pick = () => {
+    for (let tries = 0; tries < 20; tries++) {
+      const k = pool[Math.floor(rnd() * pool.length)];
+      if (k === pieces[pieces.length - 1] || (k === 'ceiling' && pieces.includes('ceiling'))) continue;
+      return k;
+    }
+    return 'wall';
+  };
+  while (pieces.length < spec.pieces) {
+    const next = must.length ? must.splice(Math.floor(rnd() * Math.min(2, must.length)), 1)[0] : pick();
+    if (next === pieces[pieces.length - 1]) { must.push(next); pieces.push(pick()); continue; }
+    pieces.push(next);
+  }
+  // cans: three short runs spread through the level
+  const parts = [];
+  const canAt = [0.25, 0.55, 0.85].map((f) => Math.max(1, Math.round(f * pieces.length)));
+  // (in the Daily a monster stretch has one Inky: the level is new to everyone each day)
+  pieces.forEach((k, i) => { parts.push(k === 'monsters' ? [k, { one: true }] : [k]); if (canAt.includes(i + 1)) parts.push(['run', { can: true }]); });
+  const def = chaseLevel({
+    name: `Daily Chase · ${spec.name}`, world: spec.world, boss: false, colors: spec.colors, speed: spec.speed, touchSpeed: spec.touch, delay: spec.delay,
+    hint: 'Today\'s Daily Chase: the same level for everyone. The fastest time wins the day!',
+    parts,
+  });
+  return Object.assign(def, { daily: day, weekday });
+}
+
 // Eraser speeds: pixels per frame for each boss, and the countdown in frames. Computers play
 // Very fast (the speeds above), phones and tablets Fast; index.html#eraser=a / b / c tries one.
 // (You run at 3.6; the level-testing bot survives up to about 2.6 - 3.7.)
@@ -1312,5 +1362,5 @@ const LEVELS = LEVEL_ORDER.map((name) => {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE, BOSSES, FIRST_CHASE, ERASER_PRESETS, useEraserPreset };
+  module.exports = { LEVELS, NONE, BLUE, RED, GREEN, YELLOW, PURPLE, BOSSES, FIRST_CHASE, ERASER_PRESETS, useEraserPreset, dailyLevel, DAILY_WEEK };
 }

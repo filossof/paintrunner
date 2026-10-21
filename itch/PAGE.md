@@ -27,6 +27,7 @@ Monsters play by the same rules. Paint the floor under an Inky and watch it race
 **What's inside**
 - 50 hand-made levels across 5 painted worlds, plus a lava-filled finale
 - 5 boss chases: huge levels where the Eraser rubs the world out behind you - run, paint and escape!
+- A new Daily Chase every day: the same level for everyone, a daily leaderboard, and rewards for your play streak
 - Living paint: blue wobbles like jelly, green sprouts grass and vines, red glows and sparks, yellow sparkles
 - 3 paint cans to collect in every level, 150 stars in all
 - No checkpoints. Every level is a short, sharp run you can master

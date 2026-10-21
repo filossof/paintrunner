@@ -757,6 +757,7 @@ class World {
     if (this.level.chase) {
       const ex = this.chaseX(), p = this.player;
       for (const m of this.monsters) if (m.alive && m.x + m.w < ex) m.alive = false;
+      this.portals = this.portals.filter((q) => (q.c + 1) * T >= ex);   // he rubs out portals too (no way back into erased ground)
       if (p.x + p.w * 0.3 < ex) { this.die('erased'); return; }
     }
     if (this.state !== 'play') return;

@@ -87,7 +87,7 @@
     const isFull = document.fullscreenElement || document.webkitFullscreenElement;
     if (isFull) return;
     if (leavingOnPurpose) { leavingOnPurpose = false; return; }
-    if (game.mode === 'play') { logAbandon(); game.mode = 'title'; game.menuIdx = game.levelIdx; keys.clear(); pressed.clear(); }
+    if (game.mode === 'play') { logAbandon(); game.mode = 'title'; game.menuIdx = Math.max(0, game.levelIdx); keys.clear(); pressed.clear(); }
   }
   document.addEventListener('fullscreenchange', () => onFullscreenChange());
   document.addEventListener('webkitfullscreenchange', () => onFullscreenChange());
@@ -520,23 +520,26 @@
   let heroTrail = SHOP.makeTrail(), splatMarks = [], pops = [], stains = [];
   let prevJumpHeld = false;
 
+  // the level being played: one of the numbered levels, or (index -1) today's Daily Chase
+  let dailyDef = null;
+  const levelDef = (i) => (i < 0 ? dailyDef : LEVELS[i]);
+
   let levelTrack = null;
   function startLevel(i) {
     levelColors = new Set(); ceilingFrames = 0;
     if (new Date().getHours() === 18) Achievements.unlock('dinner-time');   // 6 to 7 pm
-    Achievements.playedToday();
     // the music for this level: the boss chase theme, or one of the five level tracks (a different
     // one from the last level's; restarting the same level keeps its track)
-    if (i !== game.levelIdx || !levelTrack) levelTrack = LEVELS[i].boss ? 'boss' : Sound.pickLevelTrack();
+    if (i !== game.levelIdx || !levelTrack) levelTrack = levelDef(i).boss || levelDef(i).daily ? 'boss' : Sound.pickLevelTrack();
     game.levelIdx = i;
-    game.world = new World(LEVELS[i]);
+    game.world = new World(levelDef(i));
     game.mode = 'play';
     Ghost.resetRecording(); Ghost.record(game.world);
     ART.resetLevel(game.world.level.w, game.world.level.h);
     if (eraserPreset && game.world.level.chase) showToast(`Eraser: ${eraserPreset.name}`, 2000);
     stepCamera(game.world, true);
     loadGhost(i);
-    game.color = LEVELS[i].colors[0];
+    game.color = levelDef(i).colors[0];
     game.runStomps = 0;
     heroTrail = SHOP.makeTrail();
     splatMarks = [];
@@ -604,7 +607,7 @@
         case 'sizzle': sfx.sizzle(); burst(ev.x, ev.y, '#bbb', 8, 2, 4); burst(ev.x, ev.y, '#ff8c1a', 5, 2.5, 2); break;
         case 'respawn': {
           sfx.respawn();
-          const tips = LEVELS[game.levelIdx].tips;
+          const tips = levelDef(game.levelIdx).tips;
           if (tips) {
             const tip = tips[(world.deaths - 1) % tips.length];
             showToast('💡 ' + (touchMode ? tip.replace(/\bClick\b/g, 'Tap').replace(/\bclick\b/g, 'tap') : tip), 4200);
@@ -637,9 +640,10 @@
   }
 
   function completeLevel() {
+    if (levelDef(game.levelIdx).daily) return completeDaily();
     const w = game.world;
     const time = Math.round((w.finishTime ?? w.frame / 60) * 1000) / 1000;
-    const key = LEVELS[game.levelIdx].name;
+    const key = levelDef(game.levelIdx).name;
     const prev = game.best[key];
     const isBest = !prev || time < prev;
     if (isBest) { game.best[key] = time; store.set('bestByName', game.best); }
@@ -658,10 +662,11 @@
     const starsAfter = totalStars();
     const unlockedNow = CHARACTERS.filter((c) => c.stars > starsBefore && c.stars <= starsAfter);
     game.lastResult = { time, throws: w.throws, deaths: w.deaths, isBest, stars, newStars, cloud: null, unlockedNow, earned, at: game.tick };
+    newChest(earned);
     if (unlockedNow.length) setTimeout(() => sfx.grow(), 400);
     refreshUnlocked();
     store.set('unlocked', game.unlocked);
-    if (w.deaths === 0 && LEVELS[game.levelIdx].world >= 3) Achievements.unlock('flawless');   // World 4 (yellow) or later, no falls
+    if (w.deaths === 0 && levelDef(game.levelIdx).world >= 3) Achievements.unlock('flawless');   // World 4 (yellow) or later, no falls
     if (w.throws === 1) Achievements.unlock('minimalist');
     if (w.deaths === 0) Achievements.add('cleanRuns');
     achCheck();
@@ -686,12 +691,20 @@
   const online = () => typeof Cloud !== 'undefined' && Cloud.available;
 
   function postResult(result, completed, ghost) {
-    if (!online() || LEVELS[game.levelIdx].test) { result.cloud = null; return; }   // (test levels stay off the boards)
-    const lv = LEVELS[game.levelIdx];
-    const run = { level: lv.name, levelIdx: game.levelIdx, completed, time: result.time, stars: result.stars, throws: result.throws, deaths: result.deaths, played: game.world ? game.world.playFrames / 60 : result.time };
+    if (!online() || levelDef(game.levelIdx).test) { result.cloud = null; return; }   // (test levels stay off the boards)
+    const lv = levelDef(game.levelIdx);
+    const run = { level: lv.daily ? 'Daily Chase' : lv.name, levelIdx: game.levelIdx, completed, time: result.time, stars: result.stars, throws: result.throws, deaths: result.deaths, played: game.world ? game.world.playFrames / 60 : result.time };
     Cloud.logRun(run).catch((e) => console.warn('logRun', e.code || e));   // guests too, for the stats
-    if (!Cloud.user) { result.cloud = 'signin'; return; }
+    if (!Cloud.user) { result.cloud = lv.daily ? 'signin-daily' : 'signin'; return; }
     if (!completed) return;
+    if (lv.daily) {                                          // today's board: your best time today, and your place
+      result.cloud = 'saving';
+      Cloud.saveProfile(localProgress(), LEVELS).catch(() => { });
+      Cloud.submitDaily(lv.daily, { time: result.time, stars: result.stars })
+        .then((r) => { result.cloud = { daily: r.rank }; dailyPodium(r.rank); })
+        .catch((e) => { console.warn('submitDaily', e.code || e); result.cloud = 'error'; });
+      return;
+    }
     result.cloud = 'saving';
     // keep the star ranking up to date too (total stars, levels cleared)
     Cloud.saveProfile(localProgress(), LEVELS).catch((e) => console.warn('saveProfile', e.code || e));
@@ -725,6 +738,8 @@
   function cloudLine(r) {
     const c = r.cloud;
     if (c === 'signin') return ['Sign in (top right) to put this on the leaderboards', 15, 'rgba(255,255,255,0.75)', 600];
+    if (c === 'signin-daily') return ['Sign in (top right) to race for today\'s top spots', 15, 'rgba(255,255,255,0.75)', 600];
+    if (c && c.daily) return [`${['🥇', '🥈', '🥉'][c.daily - 1] || '🏁'} #${c.daily} on today's Daily!`, 18, '#ffd166', 800];
     if (c === 'saving') return ['Posting to the leaderboards…', 15, 'rgba(255,255,255,0.75)', 600];
     if (c === 'error') return ['Could not reach the leaderboards', 15, 'rgba(255,255,255,0.6)', 500];
     if (c && typeof c === 'object') {
@@ -790,6 +805,7 @@
   const topGhosts = {};
   let ghostReq = 0;
   function loadGhost(i) {
+    if (i < 0) { Ghost.use(null); return; }   // (no ghosts in the Daily)
     const name = LEVELS[i].name, req = ++ghostReq;
     Ghost.use(null);
     const mine = () => {
@@ -894,7 +910,7 @@
       spent: game.wallet.spent || 0,
       drops: drops(),
       outfit: ['hat', 'trail', 'skin', 'splat', 'flag'].filter((c) => game.wallet.equipped[c]).length,
-      owned: game.wallet.owned.filter((id) => id !== 'trophy').length,
+      owned: game.wallet.owned.filter((id) => SHOP.byId[id] && !SHOP.byId[id].exclusive).length,
       finalePerfect: LEVELS.filter((l) => l.world === 5).filter((l) => (game.stars[l.name] || 0) >= 3).length,
       charsUnlocked: CHARACTERS.filter((c) => totalStars() >= c.stars).length,
     };
@@ -902,7 +918,7 @@
   // everything that can be worked out from progress (also catches up on things done before achievements existed)
   function achCheck() {
     if (LEVELS[0] && game.best[LEVELS[0].name] !== undefined) Achievements.unlock('off-we-go');
-    if (game.wallet.owned.some((id) => id !== 'trophy')) Achievements.unlock('window-shopper');
+    if (game.wallet.owned.some((id) => SHOP.byId[id] && !SHOP.byId[id].exclusive)) Achievements.unlock('window-shopper');
     Achievements.check(achContext());
   }
   function achEvents(w) {
@@ -1015,9 +1031,12 @@
       if (tapped('ArrowRight', 'KeyD')) { game.menuIdx = Math.min(game.unlocked, game.menuIdx + 1); sfx.select(); }
       if (tapped('Enter', 'Space') || mouse.down) { mouse.down = false; play(game.menuIdx); }
     } else if (game.mode === 'complete') {
+      // the chest first: the first click / Enter opens it (R and Esc still work right away)
+      if (game.chest && !game.chest.opened && (tapped('Enter', 'Space') || mouse.down)) { mouse.down = false; openChest(); pressed.clear(); }
       if (tapped('Enter', 'Space') || mouse.down) {
         mouse.down = false;
-        if (game.levelIdx + 1 < LEVELS.length) play(game.levelIdx + 1);
+        if (game.levelIdx < 0) { game.mode = 'title'; if (typeof UI !== 'undefined') UI.openDaily(); }   // after the Daily: today's board
+        else if (game.levelIdx + 1 < LEVELS.length) play(game.levelIdx + 1);
         else {
           game.mode = 'end';
           // the first time through the last level: the Chapter 2 teaser
@@ -1025,7 +1044,7 @@
         }
       }
       if (tapped('KeyR')) play(game.levelIdx);
-      if (tapped('Escape')) { game.mode = 'title'; game.menuIdx = game.levelIdx; } // back to the level you just finished
+      if (tapped('Escape')) { game.mode = 'title'; game.menuIdx = Math.max(0, game.levelIdx); } // back to the level you just finished
     } else if (game.mode === 'end') {
       if (tapped('Enter', 'Space', 'Escape') || mouse.down) { mouse.down = false; game.mode = 'title'; game.menuIdx = game.unlocked; }
     } else if (game.mode === 'play') {
@@ -1036,7 +1055,7 @@
         touches.clear(); syncTouchKeys(); keys.clear(); pressed.clear(); mouse.down = mouse.right = false;
         return;
       }
-      if (tapped('Escape')) { logAbandon(); game.mode = 'title'; game.menuIdx = game.levelIdx; pressed.clear(); return; }
+      if (tapped('Escape')) { logAbandon(); game.mode = 'title'; game.menuIdx = Math.max(0, game.levelIdx); pressed.clear(); return; }
       if (tapped('KeyR')) { logAbandon(); startLevel(game.levelIdx); pressed.clear(); return; }
       const cols = w.level.colors;
       ALL_COLORS.forEach((c, i) => {
@@ -1074,8 +1093,8 @@
       if (w.state === 'play' && w.player.cling === 2) { if (++ceilingFrames >= 300) Achievements.unlock('spider-painter'); } else ceilingFrames = 0;
       if (!document.hidden) {
         playLog.seconds += 1 / 60;
-        playLog.levels.add(LEVELS[game.levelIdx].name);
-        playLog.lastLevel = LEVELS[game.levelIdx].name;
+        playLog.levels.add(levelDef(game.levelIdx).name);
+        playLog.lastLevel = levelDef(game.levelIdx).name;
       }
       const pl = w.player;
       const trailId = look().trail;
@@ -1147,13 +1166,13 @@
     if (game.world && ART.layered()) {
       const p = game.world.player, [sx, sy] = toScreen(p.x + p.w / 2, p.y + p.h / 2);
       ART.setCamera(sx, sy);
-      ART.drawScene(ctx, LEVELS[game.levelIdx].name, game.levelIdx, game.tick / 60, cam.on ? cam.x : 0, game.world.level.w);
-    } else ctx.drawImage(game.world ? ART.paper(LEVELS[game.levelIdx].name, game.levelIdx) : ART.plainPaper(), 0, 0);
+      ART.drawScene(ctx, levelDef(game.levelIdx).name, game.levelIdx, game.tick / 60, cam.on ? cam.x : 0, game.world.level.w);
+    } else ctx.drawImage(game.world ? ART.paper(levelDef(game.levelIdx).name, game.levelIdx) : ART.plainPaper(), 0, 0);
   }
 
   // notes on the paper, like a sketchbook (a bobbing arrow points at the spot)
   function drawSigns(w) {
-    const signs = LEVELS[game.levelIdx].signs;
+    const signs = levelDef(game.levelIdx).signs;
     if (!signs) return;
     const t = game.tick / 60;
     for (const sg of signs) {
@@ -1624,7 +1643,7 @@
     drawCountdown(w);
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, W, 30);
-    text(`${game.levelIdx + 1} / ${LEVELS.length}   ${lv.name}`, 12, 15, 15, '#fff');
+    text(game.levelIdx < 0 ? `📅  ${lv.name}` : `${game.levelIdx + 1} / ${LEVELS.length}   ${lv.name}`, 12, 15, 15, '#fff');
     w.cans.forEach((can, i) => drawCan(W / 2 - 22 + i * 22, 16, 0.75, can.got, can.got ? COLOR_HEX[ALL_COLORS[i]] : '#55555c'));
     text(`${(w.state === 'won' && w.finishTime !== null ? w.finishTime : w.frame / 60).toFixed(3)}s`, W - 12, 15, 15, '#fff', 'right');
     if (!touchMode) text(`R restart · Esc menu · M music ${Sound.musicOn ? 'on' : 'off'} · F full screen`, W - 80, 15, 12, 'rgba(255,255,255,0.55)', 'right', 500);
@@ -1801,11 +1820,165 @@
     if (isBest && !firstClear) rows.push(['New best time', 15]);
     if (wl.daily !== todayKey()) { rows.push(['First level today', 30]); wl.daily = todayKey(); }
     if (stomps > 0) rows.push([`Stomps × ${stomps}`, stomps]);
+    streakReward(rows);
     wl.clears[key] = clears + 1;
-    const total = rows.reduce((n, r) => n + r[1], 0);
+    const total = rows.reduce((n, r) => n + (r[1] || 0), 0);
     wl.earned += total;
     saveWallet();
     return { rows, total };
+  }
+
+  // ---------- the reward chest on the level-complete screen ----------
+  // Your Paint Drops wait in a chest: click it and they burst out and pour into your total.
+  function newChest(earned) {
+    game.chest = { opened: !earned || earned.total <= 0, at: 0, drops: [], got: 0, total: earned ? earned.total : 0 };
+  }
+  function openChest() {
+    const ch = game.chest;
+    if (!ch || ch.opened) return;
+    ch.opened = true; ch.at = game.tick;
+    sfx.can(); setTimeout(() => sfx.win(), 120);
+    const n = Math.min(36, 10 + Math.round(ch.total / 8));
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.8, v = 5 + Math.random() * 5;
+      ch.drops.push({ x: 0, y: 0, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, fly: 24 + i * 2 + Math.random() * 10, done: false, col: Math.random() < 0.25 ? COLOR_HEX[ALL_COLORS[i % 5]] : '#2f9bff' });
+    }
+    ch.n = n;
+  }
+  // a wooden chest with gold bands, inked; lid = 0 shut ... 1 wide open
+  function drawChest(x, y, s, lid, glow) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    if (glow > 0) {                                          // light pouring out
+      const g = ctx.createRadialGradient(0, -14, 4, 0, -14, 90);
+      g.addColorStop(0, `rgba(255,230,140,${0.85 * glow})`); g.addColorStop(1, 'rgba(255,230,140,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -14, 90, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(255,236,160,${0.5 * glow})`; ctx.lineWidth = 3;
+      for (let k = 0; k < 7; k++) { const a = -Math.PI / 2 + (k - 3) * 0.32 + Math.sin(game.tick * 0.05 + k) * 0.04; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 20, -14 + Math.sin(a) * 20); ctx.lineTo(Math.cos(a) * 80, -14 + Math.sin(a) * 80); ctx.stroke(); }
+    }
+    ctx.lineJoin = 'round'; ctx.strokeStyle = INK; ctx.lineWidth = 3;
+    const wood = ctx.createLinearGradient(0, -14, 0, 26); wood.addColorStop(0, '#c07a3a'); wood.addColorStop(1, '#8a5222');
+    // body
+    ctx.fillStyle = wood; roundRect(-34, -14, 68, 40, 5); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(28,28,31,0.35)'; ctx.lineWidth = 1.5;
+    for (const yy of [-2, 10]) { ctx.beginPath(); ctx.moveTo(-32, yy); ctx.lineTo(32, yy); ctx.stroke(); }
+    if (lid > 0.05) {                                        // inside: a glowing pile of paint
+      ctx.fillStyle = '#2f9bff'; ctx.beginPath(); ctx.ellipse(0, -14, 30, 6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.ellipse(-8, -15.5, 9, 2, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    const gold = ctx.createLinearGradient(-34, 0, 34, 0); gold.addColorStop(0, '#c98a00'); gold.addColorStop(0.5, '#ffe27a'); gold.addColorStop(1, '#c98a00');
+    ctx.fillStyle = gold; ctx.strokeStyle = INK; ctx.lineWidth = 2;
+    for (const bx of [-26, 20]) { ctx.fillRect(bx, -14, 6, 40); ctx.strokeRect(bx, -14, 6, 40); }
+    // lid, hinged at the back
+    ctx.save(); ctx.translate(0, -14); ctx.scale(1, Math.cos(lid * 1.9)); ctx.translate(0, 0);
+    ctx.fillStyle = wood; ctx.strokeStyle = INK; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-34, 0); ctx.lineTo(-34, -10); ctx.quadraticCurveTo(0, -30, 34, -10); ctx.lineTo(34, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = gold; ctx.lineWidth = 2;
+    for (const bx of [-26, 20]) { ctx.beginPath(); ctx.moveTo(bx, 0); ctx.lineTo(bx, -16 + Math.abs(bx) * 0.15); ctx.lineTo(bx + 6, -17 + Math.abs(bx) * 0.15); ctx.lineTo(bx + 6, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    ctx.restore();
+    if (lid < 0.05) { ctx.fillStyle = gold; roundRect(-6, -18, 12, 12, 3); ctx.fill(); ctx.stroke(); ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, -13, 2, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+
+  function drawChestScene(ch, y0) {
+    if (!ch || (!ch.total && ch.opened)) return;
+    const cy = y0 + 5.5 * 40 + 8, since = game.tick - ch.at;
+    if (!ch.opened) {
+      // waiting to be opened: a little hop and a wiggle, and a hint
+      const hop = Math.abs(Math.sin(game.tick * 0.12)) * 6, wig = Math.sin(game.tick * 0.5) * (Math.sin(game.tick * 0.04) > 0.6 ? 0.08 : 0);
+      ctx.save(); ctx.translate(W / 2, cy - hop); ctx.rotate(wig);
+      drawChest(0, 0, 1.2, 0, 0.35 + 0.15 * Math.sin(game.tick * 0.1));
+      ctx.restore();
+      text(touchMode ? 'Tap the chest!' : 'Click the chest!', W / 2 + 78, cy - 6, 18, '#ffd166', 'left', 900);
+      return;
+    }
+    // opened: it slides aside, the lid swings up, the drops burst out and fly into the total
+    const slide = Math.min(1, since / 14), x = W / 2 - slide * 185, lid = Math.min(1, since / 10);
+    // once every drop has landed, the empty chest fades away (the reward lines take its place)
+    if (ch.n && ch.got >= ch.n && !ch.emptyAt) ch.emptyAt = game.tick;
+    const fade = ch.emptyAt ? Math.max(0, 1 - (game.tick - ch.emptyAt) / 18) : 1;
+    if (fade > 0) { ctx.globalAlpha = fade; drawChest(x, cy, 1.2, lid, Math.max(0, 1 - since / 120)); ctx.globalAlpha = 1; }
+    const tx = W / 2 - 40, ty = y0 + 5 * 40;
+    for (const d of ch.drops) {
+      if (d.done) continue;
+      d.t++;
+      if (d.t === 1) { d.x = x; d.y = cy - 20; }
+      if (d.t < d.fly) { d.vy += 0.35; d.x += d.vx; d.y += d.vy; }
+      else { d.x += (tx - d.x) * 0.22; d.y += (ty - d.y) * 0.22; if (Math.hypot(tx - d.x, ty - d.y) < 8) { d.done = true; ch.got++; if (ch.got % 2) sfx.select(); } }
+      SHOP.drawDrop(ctx, d.x, d.y, 6, d.col);
+    }
+  }
+
+  // ---------- the play streak (daily.js) ----------
+  // The first level you finish each day keeps the streak going and pays that day's reward:
+  // Paint Drops, a gift from the store, or (days 7, 14, 30, 100) an item you can only get this way.
+  function streakReward(rows) {
+    const wl = game.wallet;
+    wl.streak = wl.streak || { last: '', count: 0, best: 0, saverAt: '' };
+    const m = Daily.markPlayed(wl.streak);
+    if (!m) return null;
+    Achievements.max('bestStreak', m.count);
+    const rw = Daily.reward(m.count), label = `🔥 Day ${m.count} streak${m.saved ? ' (saved by the 🪣)' : ''}`;
+    const give = (id) => { if (!wl.owned.includes(id)) wl.owned.push(id); };
+    if (rw.item && !wl.owned.includes(rw.item)) { give(rw.item); rows.push([`${label}: ${SHOP.byId[rw.item].name}!`, null]); toastLater(`🔥 ${m.count}-day streak! You got ${SHOP.byId[rw.item].name}. Find it in the store.`); }
+    else if (rw.gift || rw.item) {
+      // a store item you don't have yet (picked by the date), or Drops if you have everything
+      const left = SHOP.ITEMS.filter((it) => !it.exclusive && !wl.owned.includes(it.id) && it.price.drops <= 800);
+      if (left.length) { const it = left[Daily.dayNum(Daily.key()) % left.length]; give(it.id); rows.push([`${label}: 🎁 ${it.name}`, null]); toastLater(`🎁 Streak gift: ${it.name}! Find it in the store.`); }
+      else rows.push([label, 300]);
+    } else rows.push([label, rw.drops]);
+    return m;
+  }
+  const toastLater = (str) => setTimeout(() => showToast(str, 3600), 1200);
+
+  // ---------- the Daily Chase ----------
+  // today's level (made from the date: levels.js dailyLevel); phones get the gentler Eraser
+  function dailyToday() {
+    const day = Daily.key();
+    if (!dailyDef || dailyDef.daily !== day) {
+      dailyDef = dailyLevel(day, Daily.weekday(day));
+      if (touchMode) dailyDef.chase.speed = dailyDef.chase.touchSpeed;
+    }
+    return dailyDef;
+  }
+  // what you've collected today: 1 finished, 2 all cans, 4 a podium place (in the wallet, so it syncs)
+  const dailyFlags = () => game.wallet.clears['daily:' + Daily.key()] || 0;
+  function playDaily() {
+    dailyToday();
+    ART.opts.dailyWorld = dailyDef.world;
+    play(-1);
+  }
+  function completeDaily() {
+    const w = game.world, day = dailyDef.daily, wl = game.wallet;
+    const time = Math.round((w.finishTime ?? w.frame / 60) * 1000) / 1000, stars = w.cansCollected;
+    const flags = dailyFlags(), rows = [];
+    if (!(flags & 1)) { rows.push(['Daily Chase done', 100]); Achievements.add('dailies'); }
+    if (stars === 3 && !(flags & 2)) rows.push(['All 3 cans today', 50]);
+    streakReward(rows);
+    wl.clears['daily:' + day] = flags | 1 | (stars === 3 ? 2 : 0);
+    const total = rows.reduce((n, r) => n + (r[1] || 0), 0);
+    wl.earned += total;
+    saveWallet();
+    const best = store.get('dailyBest', {});
+    const isBest = best.day !== day || time < best.time;
+    if (isBest) store.set('dailyBest', { day, time });
+    const earned = { rows, total };
+    game.lastResult = { daily: day, time, throws: w.throws, deaths: w.deaths, isBest, stars, newStars: false, cloud: null, unlockedNow: [], earned, at: game.tick };
+    newChest(earned);
+    if (w.throws === 1) Achievements.unlock('minimalist');
+    achCheck();
+    postResult(game.lastResult, true, null);
+    game.mode = 'complete';
+    if (typeof UI !== 'undefined' && UI.refresh) setTimeout(() => UI.refresh(), 0);
+  }
+  // a podium place on today's board pays once a day: 1st 200, 2nd 150, 3rd 100
+  function dailyPodium(rank) {
+    if (!rank || rank > 3 || dailyFlags() & 4) return;
+    const prize = [200, 150, 100][rank - 1];
+    game.wallet.earned += prize;
+    game.wallet.clears['daily:' + Daily.key()] = dailyFlags() | 4;
+    saveWallet();
+    if (rank === 1) Achievements.unlock('champion');
+    showToast(`${['🥇', '🥈', '🥉'][rank - 1]} #${rank} on today's Daily! +${prize} 💧`, 4000);
   }
 
   function buyItem(id) {
@@ -1880,30 +2053,32 @@
       if (game.mode === 'complete') {
         const r = game.lastResult;
         const e = r.earned || { rows: [], total: 0 };
-        const k = Math.min(1, (game.tick - (r.at || 0) - 30) / 60);          // the Drops count up after half a second
-        const shown = Math.round(e.total * Math.max(0, k));
-        if (k > 0 && k < 1 && game.tick % 4 === 0) sfx.select();
+        const ch = game.chest || { opened: true, drops: [], n: 0, got: 0, total: 0 };
+        // the Drops come out of the chest; the total counts up as they land
+        const shown = !ch.opened ? 0 : ch.n ? Math.round(e.total * Math.min(1, ch.got / ch.n)) : e.total;
+        const showRows = ch.opened && (!ch.n || ch.got >= ch.n);
         const y0 = drawPanel([
-          ['Level complete!', 46, '#fff', 900],
+          [r.daily ? 'Daily complete!' : 'Level complete!', 46, '#fff', 900],
           ['', 34, '#ffd166', 900],   // the three paint cans are drawn across these two rows, below
           ['', 34, '#ffd166', 900],
           [`Time ${r.time.toFixed(3)}s${r.isBest ? '  ★ new best' : ''}`, 21, r.isBest ? '#ffd166' : '#fff', 600],
           [`Paint thrown: ${r.throws}   ·   Falls: ${r.deaths}`, 16, 'rgba(255,255,255,0.75)', 500],
-          [`+${shown}  Paint Drops`, 26, '#7cc4ff', 900],
-          [e.rows.map(([label, n]) => `${label} +${n}`).join('   ·   '), 13, 'rgba(255,255,255,0.65)', 600],
+          [ch.opened ? `+${shown}  Paint Drops` : '', 26, '#7cc4ff', 900],
+          [showRows ? e.rows.map(([label, n]) => (n === null ? label : `${label} +${n}`)).join('   ·   ') : '', 13, 'rgba(255,255,255,0.65)', 600],
           cloudLine(r),
           r.unlockedNow && r.unlockedNow.length
             ? [`New character unlocked: ${r.unlockedNow.map((c) => c.name).join(' & ')}!  ${touchMode ? 'Try it from the menu' : 'Press C to try it'}`, 16, '#7cf29c', 800]
             : ['', 14, '#fff', 500],
-          touchMode ? ['', 15, '#fff', 500] : ['ENTER: next level   ·   R: retry   ·   S: store   ·   Esc: menu', 15, 'rgba(255,255,255,0.6)', 500],
+          touchMode ? ['', 15, '#fff', 500] : [!ch.opened ? 'Click the chest or press ENTER to open it' : `ENTER: ${r.daily ? "today's board" : 'next level'}   ·   R: retry   ·   S: store   ·   Esc: menu`, 15, 'rgba(255,255,255,0.6)', 500],
         ], 40);
-        if (touchMode) drawPanelButtons([['☰ Menu', 'Escape'], ['↺ Retry', 'KeyR'], ['Next ▶', 'Enter']], y0 + 10 * 40);
+        drawChestScene(ch, y0);
+        if (touchMode) drawPanelButtons([['☰ Menu', 'Escape'], ['↺ Retry', 'KeyR'], [!ch.opened ? '🎁 Open' : r.daily ? 'Board ▶' : 'Next ▶', 'Enter']], y0 + 10 * 40);
         [0, 1, 2].forEach((i) => drawCan(W / 2 - 56 + i * 56, y0 + 62, 1.6, i < r.stars, COLOR_HEX[ALL_COLORS[i]]));
         if (r.newStars) text('new record!', W / 2 + 96, y0 + 62, 16, '#ffd166', 'left', 800);
         // a drop next to the total
         ctx.font = '900 26px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
         const tw = ctx.measureText(`+${shown}  Paint Drops`).width;
-        SHOP.drawDrop(ctx, W / 2 - tw / 2 - 20, y0 + 5 * 40 + 2, 8);
+        if (ch.opened && e.total > 0) SHOP.drawDrop(ctx, W / 2 - tw / 2 - 20, y0 + 5 * 40 + 2, 8);
       }
       if (game.mode === 'end') {
         drawPanel([
@@ -1987,6 +2162,17 @@
       applyProgress,
       resetProgress,
       achievements: () => { achCheck(); return Achievements.list(); },
+      // the Daily window: today's chase, your streak, the time left
+      daily: () => {
+        const d = dailyToday(), st = game.wallet.streak || {}, best = store.get('dailyBest', {});
+        return {
+          day: d.daily, name: d.name, colors: d.colors.map((c) => COLOR_HEX[c]), screens: d.map[0].length / 30,
+          msToNext: Daily.msToNext(), flags: dailyFlags(), best: best.day === d.daily ? best.time : null,
+          streak: { count: Daily.current(st), best: st.best || 0, today: st.last === Daily.key(), saver: Daily.saverReady(st) },
+          owned: (id) => game.wallet.owned.includes(id),
+        };
+      },
+      playDaily,
       achCount: () => Achievements.count(),
       touchControls: () => touchMode,
       controls: () => scheme,

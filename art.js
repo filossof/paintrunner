@@ -156,7 +156,8 @@ const ART = (() => {
   }
 
   // which world's drawing goes behind a level
-  const themeOf = (i) => Math.min(5, typeof LEVELS !== 'undefined' && LEVELS[i] && LEVELS[i].world !== undefined ? LEVELS[i].world : Math.floor(i / 8));
+  // (index -1 is today's Daily, whose world is set in opts.dailyWorld)
+  const themeOf = (i) => (i < 0 ? opts.dailyWorld || 0 : Math.min(5, typeof LEVELS !== 'undefined' && LEVELS[i] && LEVELS[i].world !== undefined ? LEVELS[i].world : Math.floor(i / 8)));
 
   // The paper for one level: color, pencil sketch, grain. Cached per level.
   const papers = new Map();

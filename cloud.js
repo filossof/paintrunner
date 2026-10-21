@@ -8,6 +8,7 @@
      pr_private/{uid}                      email; only the admin can read it
      pr_levels/{levelKey}/pr_scores/{uid}  one row per player per level: their bests
      pr_levels/{levelKey}/pr_ghosts/{uid}  each player's fastest recorded run of the level (ghost.js)
+     pr_daily/{day}/pr_scores/{uid}        the Daily Chase: each player's best time that day
      pr_runs/{autoId}                      every finished or abandoned attempt (admin stats)
      pr_sessions/{id}                      one per visit: how long the player actually played (admin stats)
 
@@ -123,7 +124,16 @@ const Cloud = (() => {
       equippedAt: newer.equippedAt || 0,
       clears,
       daily: (a.daily || '') > (b.daily || '') ? a.daily : (b.daily || ''),
+      // the play streak: whichever device played most recently has it right
+      streak: newerStreak(a.streak, b.streak),
     };
+  }
+
+  function newerStreak(a, b) {
+    if (!a || !a.last) return b ? { ...b } : undefined;
+    if (!b || !b.last) return { ...a };
+    const pick = a.last > b.last || (a.last === b.last && (a.count || 0) >= (b.count || 0)) ? a : b;
+    return { ...pick, best: Math.max(a.best || 0, b.best || 0), saverAt: (a.saverAt || '') > (b.saverAt || '') ? a.saverAt : (b.saverAt || '') };
   }
 
   const min = (a, b) => (a === undefined || a === null ? b : b === undefined || b === null ? a : Math.min(a, b));
@@ -393,6 +403,27 @@ const Cloud = (() => {
       if (!user) return null;
       const d = await ghosts(name).doc(user.uid).get();
       return d.exists ? d.data() : null;
+    },
+
+    /* The Daily Chase: keeps your best time today, returns your place on today's board. */
+    async submitDaily(day, r) {
+      if (!user) return { rank: null };
+      const ref = db.collection('pr_daily').doc(day).collection('pr_scores').doc(user.uid);
+      const old = await ref.get();
+      const time = round3(r.time);
+      if (!old.exists || time < old.data().time) {
+        await track(ref.set({ uid: user.uid, name: publicName(user), photo: user.photoURL || '', time, stars: r.stars || 0, at: Date.now() }));
+      }
+      const mine = Math.min(time, old.exists ? old.data().time : Infinity);
+      const better = await db.collection('pr_daily').doc(day).collection('pr_scores').where('time', '<', mine).limit(50).get();
+      return { rank: better.size >= 50 ? null : better.size + 1 };
+    },
+    /* Today's fastest runs (ties: whoever got there first). */
+    async dailyTop(day, limit = 10) {
+      await pending;
+      const snap = await db.collection('pr_daily').doc(day).collection('pr_scores').orderBy('time').limit(limit + 10).get();
+      const rows = snap.docs.map((d) => d.data()).sort((a, b) => a.time - b.time || a.at - b.at);
+      return { rows: withRanks(rows, (x) => x.time, (a, b) => a < b).slice(0, limit), me: user ? rows.find((x) => x.uid === user.uid) || null : null };
     },
 
     /* Overall ranking by stars collected. */
