@@ -1,4 +1,8 @@
+/* The game draws its own (light) colors. "only light" stops Chrome's automatic dark mode from
+   darkening it; Samsung Internet darkens any site without a dark-mode rule of its own, so there is
+   one at the bottom of this file (it keeps everything as it is). */
 :root {
+  color-scheme: only light;
   --paper: #efece4;
   --paper-2: #e4e0d5;
   --ink: #1c1c1f;
@@ -629,4 +633,9 @@ body.touch .set-sec + .set-sec { margin-top: 10px; padding-top: 10px; }
   .daily-card { grid-template-columns: 1fr; }
   .daily-play { justify-self: start; padding: 10px 20px; font-size: 17px; }
   .sd b { font-size: 12px; }
+}
+
+/* Dark mode on the phone: the game looks the same (see the top of this file) */
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: only light; }
 }
