@@ -48,7 +48,7 @@ const Cloud = (() => {
     [/(^|\.)instagram\.com$/, 'Instagram'], [/(^|\.)(t\.co|twitter\.com|x\.com)$/, 'X / Twitter'], [/(^|\.)(linkedin\.com|lnkd\.in)$/, 'LinkedIn'],
     [/(^|\.)(youtube\.com|youtu\.be)$/, 'YouTube'], [/(^|\.)tiktok\.com$/, 'TikTok'], [/(^|\.)discord(app)?\.(com|gg)$/, 'Discord'],
     [/(^|\.)whatsapp\.(com|net)$/, 'WhatsApp'], [/(^|\.)crazygames\./, 'CrazyGames'], [/(^|\.)poki\./, 'Poki'],
-    [/(^|\.)newgrounds\.com$/, 'Newgrounds'], [/(^|\.)github\.com$/, 'GitHub'],
+    [/(^|\.)(newgrounds\.com|ungrounded\.net)$/, 'Newgrounds'], [/(^|\.)github\.com$/, 'GitHub'],
   ];
   const siteName = (host) => { const h = host.replace(/^www\./, ''); const m = SITES.find(([re]) => re.test(h)); return m ? m[1] : h; };
   const hostOf = (url) => { try { return new URL(url).hostname; } catch (e) { return ''; } };
