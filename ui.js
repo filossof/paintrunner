@@ -114,6 +114,7 @@ const UI = (() => {
   let view = 'level', levelIdx = 0;
 
   function openLeaderboard(idx = 0) {
+    if (idx < 0) return openDaily();   // just played the Daily: its board is today's board
     levelIdx = idx;
     if (modal) modal.remove();
     modal = document.createElement('div');
