@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chest Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  /* A preview page: try each chest look with each way to open it. */
+  :root { --paper: #efece4; --ink: #1c1c1f; --ink-2: #5a5862; --gold: #e8a400; color-scheme: light; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: Nunito, ui-rounded, system-ui, sans-serif; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 18px 16px 40px; display: grid; gap: 14px; }
+  h1 { font: 700 clamp(26px, 4vw, 36px) Fredoka, ui-rounded, sans-serif; margin: 0; }
+  header p { margin: 4px 0 0; color: var(--ink-2); }
+  .stage { border: 3px solid var(--ink); border-radius: 16px; overflow: hidden; box-shadow: 6px 6px 0 var(--ink); background: #111; }
+  canvas { display: block; width: 100%; aspect-ratio: 960 / 544; cursor: pointer; touch-action: manipulation; }
+  .row { display: grid; gap: 6px; }
+  .row h2 { margin: 0; font: 700 15px Fredoka, sans-serif; color: var(--ink-2); }
+  .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .opts button { font: 800 14px Nunito, sans-serif; padding: 8px 14px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; color: var(--ink); cursor: pointer; box-shadow: 2px 2px 0 var(--ink); }
+  .opts button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .opts button:focus-visible { outline: 3px solid #2f7bff; outline-offset: 2px; }
+  .go { display: flex; gap: 10px; flex-wrap: wrap; }
+  .go button { font: 800 16px Nunito, sans-serif; padding: 10px 20px; border: 2px solid var(--ink); border-radius: 999px; background: #ffc93c; cursor: pointer; box-shadow: 3px 3px 0 var(--ink); }
+  .go button.alt { background: #fff; }
+  .note { color: var(--ink-2); font-size: 14px; margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🎁 Chest Lab</h1>
+    <p>Pick a chest and a way to open it, then click the chest (or tap it on your phone). "Open again" closes it for another try.</p>
+  </header>
+  <div class="stage"><canvas id="c" width="960" height="544" aria-label="The level-complete screen with a reward chest"></canvas></div>
+  <div class="row"><h2>The chest</h2><div class="opts" id="looks"></div></div>
+  <div class="row"><h2>How it opens</h2><div class="opts" id="anims"></div></div>
+  <div class="go"><button id="open">🎁 Open it</button><button id="again" class="alt">↺ Open again</button></div>
+  <p class="note">Each animation works with every chest. The game would use one combination for normal levels, and maybe the Golden chest with the Jackpot for special rewards.</p>
+</div>
+<script src="chest.js?v=1"></script>
+<script>
+const c = document.getElementById('c'), g = c.getContext('2d');
+const W = 960, H = 544;
+let look = 'ink', anim = 'burst', ch;
+function reset() { ch = Chest.make({ look, anim, total: 150, x: W / 2, y: 345, counter: { x: W / 2 - 108, y: 220 } }); }
+function buttons(el, map, get, set) {
+  el.innerHTML = Object.entries(map).map(([k, name]) => `<button data-k="${k}" aria-pressed="${k === get()}">${name}</button>`).join('');
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    set(b.dataset.k); el.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    reset();
+  });
+}
+buttons(document.getElementById('looks'), Chest.LOOKS, () => look, (k) => { look = k; });
+buttons(document.getElementById('anims'), Chest.ANIMS, () => anim, (k) => { anim = k; });
+document.getElementById('open').onclick = () => Chest.open(ch);
+document.getElementById('again').onclick = () => reset();
+c.addEventListener('click', () => (ch.done ? reset() : Chest.open(ch)));
+reset();
+
+function text(s, x, y, size, col, weight = 800) {
+  g.font = `${weight} ${size}px Fredoka, ui-rounded, system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = col; g.fillText(s, x, y);
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  Chest.step(ch, dt);
+  // a level-complete screen like the game's
+  g.fillStyle = '#26262b'; g.fillRect(0, 0, W, H);
+  g.strokeStyle = 'rgba(255,255,255,0.05)'; g.lineWidth = 2;
+  for (let x = -H; x < W; x += 26) { g.beginPath(); g.moveTo(x, H); g.lineTo(x + H, 0); g.stroke(); }
+  text('Level complete!', W / 2, 66, 46, '#fff', 700);
+  text('Time 12.840s   ★ new best', W / 2, 120, 21, '#ffd166', 700);
+  if (ch.opened) {
+    g.save(); g.translate(W / 2 + 20, 218); const p = 1 + (ch.pop || 0) * 0.12; g.scale(p, p);
+    text(`+${ch.shown}  Paint Drops`, 0, 0, 30, '#7cc4ff', 700); g.restore();
+    Chest.drop(g, W / 2 - 108, 220, 9, '#2f9bff');
+  } else text(matchMedia('(pointer: coarse)').matches ? 'Tap the chest!' : 'Click the chest!', W / 2, 218, 24, '#ffd166', 700);
+  Chest.draw(g, ch);
+  if (ch.done) text('First clear +50  ·  New cans × 3 +75  ·  First level today +25', W / 2, 470, 15, 'rgba(255,255,255,0.7)', 600);
+  requestAnimationFrame(frame);
+}
+document.fonts.load('700 10px Fredoka').finally(() => requestAnimationFrame(frame));
+</script>
+</body>
+</html>
