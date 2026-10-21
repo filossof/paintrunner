@@ -188,6 +188,17 @@
       <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">${grid}${bars}${xl}</svg></div>`;
   }
 
+  // ---------------- where a player first came from ----------------
+  // Visits record it since Oct 2026 (source / firstSource); a day before that, only whether it was itch.io (host).
+  const UNKNOWN_SOURCE = 'Unknown (before tracking)';
+  function sourceOf(p) {
+    const ss = p.sessions.slice().sort((a, b) => (a.startedAt || a.lastBeat) - (b.startedAt || b.lastBeat));
+    const tagged = ss.find((s) => s.firstSource);
+    if (tagged) return tagged.firstSource;
+    if (ss.some((s) => s.host === 'itch')) return 'itch.io';
+    return UNKNOWN_SOURCE;
+  }
+
   // ---------------- render ----------------
   const openPlayers = new Set();
   let recent = [], recentPage = 0;
@@ -236,6 +247,10 @@
           return { levelsCleared: Object.keys(stars).length, totalStars: sum(Object.values(stars)) };
         })()),
         wasGuest: !!p.member && (p.runs.some((r) => r.guest) || p.sessions.some((s) => s.guest)),
+        source: sourceOf(p),
+        // came back: played or visited on two or more different days
+        returned: new Set([...p.sessions.map((s) => startOfDay(s.startedAt || s.lastBeat)), ...p.runs.map((r) => startOfDay(r.at))]).size >= 2,
+        clearedInRange: new Set(p.runs.filter((r) => r.completed && inRange(r.at)).map((r) => r.level)).size,
       };
     });
 
@@ -271,6 +286,32 @@
       </div>
       ${sessionsError ? `<p class="note">Play time is not available yet: ${sessionsError === 'permission-denied' ? 'publish the updated firestore.rules in the Firebase console.' : esc(sessionsError)}</p>`
         : '<p class="note">Guests are players who haven\'t signed in; they get an anonymous ID, so each browser counts as one guest until they sign in. Visitors opened the game; active players also played a level. Play time is time spent inside levels. It uses recorded play sessions (time in a level with the tab visible) and, where those are missing, such as before sessions were recorded, the time spent on each run.</p>'}`;
+
+    // ---- where players come from ----
+    const bySource = {};
+    for (const p of people.filter((x) => x.visitedInRange)) (bySource[p.source] = bySource[p.source] || []).push(p);
+    const sourceRows = Object.entries(bySource).map(([name, ps]) => {
+      const played = ps.filter((p) => p.activeInRange), secs = played.map((p) => p.inRange).filter((v) => v > 0);
+      return {
+        name, visitors: ps.length, played: played.length,
+        kept: ps.filter((p) => p.clearedInRange >= 2).length,
+        time: secs.length ? median(secs) : null, totalTime: sum(ps, (p) => p.inRange),
+        signedIn: ps.filter((p) => !p.guest).length, returned: ps.filter((p) => p.returned).length,
+      };
+    });
+    const share = (a, b) => `${num(a)} <span class="muted">${pct(a, b)}</span>`;
+    const sourceCols = [
+      { key: 'name', label: 'Source', fmt: (x) => (x.name === UNKNOWN_SOURCE ? `<span class="muted">${x.name}</span>` : esc(x.name)) },
+      { key: 'visitors', label: 'Visitors', num: true, fmt: (x) => num(x.visitors) },
+      { key: 'played', label: 'Played a level', num: true, fmt: (x) => share(x.played, x.visitors) },
+      { key: 'kept', label: 'Cleared 2+ levels', num: true, fmt: (x) => share(x.kept, x.visitors) },
+      { key: 'time', label: 'Play time', num: true, fmt: (x) => (x.time === null ? '—' : `${dur(x.time)} <span class="muted">median</span>`) },
+      { key: 'totalTime', label: 'Total time', num: true, fmt: (x) => dur(x.totalTime) },
+      { key: 'signedIn', label: 'Signed in', num: true, fmt: (x) => share(x.signedIn, x.visitors) },
+      { key: 'returned', label: 'Came back', num: true, fmt: (x) => share(x.returned, x.visitors) },
+    ];
+    const sources = `<p class="note">Each player counts once, under where they <b>first</b> came from (a later visit from a bookmark still counts for the original source). Tag links you share with <code>?src=</code>, e.g. <code>filossof.github.io/paintrunner/?src=reddit-ad</code>, and they get their own row. "Came back" means played or visited on two or more days.</p>
+      ${table('sources', sourceCols, sourceRows, { sort: { key: 'visitors', dir: -1 }, empty: 'No visitors in this period.' })}`;
 
     // ---- daily charts (always the last 30 days) ----
     const days = Array.from({ length: 30 }, (_, i) => today - (29 - i) * DAY);
@@ -360,6 +401,7 @@
 
     app.innerHTML = [
       pane('overview', 'Overview', rangeLabel(), overview),
+      pane('sources', 'Where players come from', `${rangeLabel()} · first visit`, sources),
       pane('daily', 'Daily activity', 'last 30 days', daily),
       pane('players', 'Players', `${num(people.filter((p) => !p.guest).length)} signed up · ${num(people.filter((p) => p.guest).length)} guests · click a player for details`,
         `<div class="toolbar"><input id="search" type="search" placeholder="Search by name or email" aria-label="Search players">

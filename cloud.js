@@ -37,6 +37,40 @@ const Cloud = (() => {
   }
 
   const rankCache = {};
+
+  // ---- where players come from (the stats page groups players by it) ----
+  // A link tagged ?src=reddit-ad (or ?utm_source=...) names its source. Otherwise: the site the game is
+  // embedded in (itch.io, a games portal), else the site that linked here, else 'Direct'. Each browser
+  // keeps the first source it came from (firstSource), so a return visit from a bookmark still credits it.
+  const SITES = [
+    [/(^|\.)itch\.(io|zone)$/, 'itch.io'], [/(^|\.)reddit\.com$|(^|\.)redd\.it$/, 'Reddit'], [/(^|\.)google\./, 'Google'],
+    [/(^|\.)(bing|duckduckgo|yahoo|yandex|ecosia)\./, 'Other search'], [/(^|\.)(facebook\.com|fb\.com|fb\.me)$/, 'Facebook'],
+    [/(^|\.)instagram\.com$/, 'Instagram'], [/(^|\.)(t\.co|twitter\.com|x\.com)$/, 'X / Twitter'], [/(^|\.)(linkedin\.com|lnkd\.in)$/, 'LinkedIn'],
+    [/(^|\.)(youtube\.com|youtu\.be)$/, 'YouTube'], [/(^|\.)tiktok\.com$/, 'TikTok'], [/(^|\.)discord(app)?\.(com|gg)$/, 'Discord'],
+    [/(^|\.)whatsapp\.(com|net)$/, 'WhatsApp'], [/(^|\.)crazygames\./, 'CrazyGames'], [/(^|\.)poki\./, 'Poki'],
+    [/(^|\.)newgrounds\.com$/, 'Newgrounds'], [/(^|\.)github\.com$/, 'GitHub'],
+  ];
+  const siteName = (host) => { const h = host.replace(/^www\./, ''); const m = SITES.find(([re]) => re.test(h)); return m ? m[1] : h; };
+  const hostOf = (url) => { try { return new URL(url).hostname; } catch (e) { return ''; } };
+  function visitSource() {
+    try {
+      const q = new URLSearchParams(location.search), tag = q.get('src') || q.get('utm_source');
+      if (tag) return tag.slice(0, 40);
+      const ref = hostOf(document.referrer), embedded = window.top !== window.self;
+      if (embedded) return siteName(ref || location.hostname);
+      if (ref && ref !== location.hostname) return siteName(ref);
+      if (/itch\.zone$/.test(location.hostname)) return 'itch.io';
+    } catch (e) { /* fall through */ }
+    return 'Direct';
+  }
+  let source = null, firstSource = null;
+  function noteSource() {
+    source = visitSource();
+    try {
+      firstSource = localStorage.getItem('paintRunner.firstSource');
+      if (!firstSource) { firstSource = source; localStorage.setItem('paintRunner.firstSource', source); }
+    } catch (e) { firstSource = source; }
+  }
   const levelKey = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const scores = (name) => db.collection('pr_levels').doc(levelKey(name)).collection('pr_scores');
   const ghosts = (name) => db.collection('pr_levels').doc(levelKey(name)).collection('pr_ghosts');
@@ -112,6 +146,7 @@ const Cloud = (() => {
       startedAt: session.startedAt, lastBeat: Date.now(),
       seconds: Math.max(0, Math.round(d.seconds - session.base)), levels: d.levels, lastLevel: d.lastLevel || '', device: DEVICE,
       host: location.hostname.includes('itch') ? 'itch' : location.hostname, funnel: { ...funnel },
+      source: source || '', firstSource: firstSource || '',
     }).catch((e) => console.warn('session', e.code || e));
   }
 
@@ -218,6 +253,7 @@ const Cloud = (() => {
 
   return {
     get available() { return available; },
+    get source() { return { source, firstSource }; },
     get user() { return user; },
     get isAdmin() { return !!(user && user.email === ADMIN_EMAIL && user.emailVerified); },
     publicName,
@@ -276,6 +312,7 @@ const Cloud = (() => {
     trackVisits() {
       if (!available || tracking) return;
       tracking = true;
+      noteSource();
       if (account) { if (session.uid !== account.uid) startSession(); } else if (isReady) signInGuest();
     },
     // resolves once every save started so far has reached the server
