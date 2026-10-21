@@ -36,6 +36,7 @@ const Cloud = (() => {
     console.warn('Paint Runner: online features unavailable', e);
   }
 
+  const rankCache = {};
   const levelKey = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const scores = (name) => db.collection('pr_levels').doc(levelKey(name)).collection('pr_scores');
   const ghosts = (name) => db.collection('pr_levels').doc(levelKey(name)).collection('pr_ghosts');
@@ -52,7 +53,10 @@ const Cloud = (() => {
   const track = (p) => { pending = Promise.all([pending, p.catch(() => { })]); return p; };
 
   const session = { id: null, uid: null, startedAt: 0, base: 0, saved: false };
+  // what guests did with the sign-in prompts this visit (stats page): shown, clicked, signed in
+  const funnel = { claimShown: 0, claimClick: 0, signinClick: 0, signedIn: 0, via: '' };
   let lastSeconds = 0;   // play time so far this visit, as last reported by the game
+  let lastReport = null; // and the rest of that report (levels played, the last one)
   const guestName = (u) => `Guest ${u.uid.slice(0, 4)}`;
   const nameOf = () => (user ? publicName(user) : guestName(account));
 
@@ -107,6 +111,7 @@ const Cloud = (() => {
       uid: account.uid, name: nameOf(), guest: !user,
       startedAt: session.startedAt, lastBeat: Date.now(),
       seconds: Math.max(0, Math.round(d.seconds - session.base)), levels: d.levels, lastLevel: d.lastLevel || '', device: DEVICE,
+      host: location.hostname.includes('itch') ? 'itch' : location.hostname, funnel: { ...funnel },
     }).catch((e) => console.warn('session', e.code || e));
   }
 
@@ -126,6 +131,8 @@ const Cloud = (() => {
       daily: (a.daily || '') > (b.daily || '') ? a.daily : (b.daily || ''),
       // the play streak: whichever device played most recently has it right
       streak: newerStreak(a.streak, b.streak),
+      // when this account got its sign-in gift (once ever)
+      signinGift: Math.max(a.signinGift || 0, b.signinGift || 0),
     };
   }
 
@@ -222,14 +229,39 @@ const Cloud = (() => {
     embedded: (() => { try { return window.top !== window.self; } catch (e) { return true; } })(),
     HOME_URL: 'https://filossof.github.io/paintrunner/',
 
-    async signIn() {
+    /* The sign-in prompts, for the stats: 'claimShown', 'claimClick', 'signinClick', or 'signedIn' (with where from). */
+    note(what, via) {
+      funnel[what] = (funnel[what] || 0) + 1;
+      if (via) funnel.via = via;
+      if (account && tracking && session.id) writeSession(lastReport || { seconds: lastSeconds, levels: 0, lastLevel: '' });
+    },
+
+    /* Where a guest's time would land on a level's fastest board (or today's Daily): { rank } within
+       the top 20, else { gap } to 10th place. Looked up once every few minutes per board. */
+    async wouldRank(name, time, day) {
+      const key = day ? 'daily:' + day : name, c = rankCache[key];
+      let times = c && Date.now() - c.at < 3 * 60000 ? c.times : null;
+      if (!times) {
+        const q = day ? db.collection('pr_daily').doc(day).collection('pr_scores').orderBy('time').limit(20)
+          : scores(name).orderBy('bestTime').limit(20);
+        times = (await q.get()).docs.map((d) => (day ? d.data().time : d.data().bestTime));
+        rankCache[key] = { times, at: Date.now() };
+      }
+      const better = times.filter((t) => t < time).length;
+      if (better < times.length || times.length < 20) return { rank: better + 1, total: times.length };
+      return { rank: null, gap: time - times[Math.min(9, times.length - 1)] };
+    },
+
+    async signIn(via = 'menu') {
       if (!available) throw new Error('offline');
+      this.note('signinClick', via);
       const provider = new firebase.auth.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       const guest = account && account.isAnonymous ? account : null;
       try {
         if (guest) await linkGuest(guest, provider);
         else await auth.signInWithPopup(provider);
+        this.note('signedIn', via);
       } catch (e) {
         const cantPopup = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/unauthorized-domain', 'auth/web-storage-unsupported'].includes(e.code);
         // inside another site's frame (itch.io) a redirect would leave the game, and Google won't load in a frame
@@ -265,7 +297,7 @@ const Cloud = (() => {
     /* Play time for this visit. `seconds` counts only time spent in a level with the tab
        visible. A session belongs to the current account (guests too); see startSession. */
     saveSession(d) {
-      lastSeconds = d.seconds;
+      lastSeconds = d.seconds; lastReport = d;
       if (!account || !tracking) return Promise.resolve();
       if (session.uid !== account.uid) startSession();
       if (Math.round(d.seconds) === session.wrote) return Promise.resolve();   // nothing new (e.g. idle on the menu)

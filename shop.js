@@ -28,6 +28,8 @@ const SHOP = (() => {
     // can't be bought: it's the reward for unlocking every achievement
     { id: 'trophy', cat: 'hat', name: 'Golden Trophy', price: { drops: 0 }, rarity: 'legend', exclusive: true, how: '🏅 Unlock every achievement' },
     // can't be bought either: rewards for a long play streak
+    // the gift for signing in with Google
+    { id: 'captainhat', cat: 'hat', name: "Captain's Hat", price: { drops: 0 }, rarity: 'legend', exclusive: true, how: '✨ Sign in with Google' },
     { id: 'laurel', cat: 'hat', name: 'Golden Laurel', price: { drops: 0 }, rarity: 'legend', exclusive: true, how: '🔥 Play 14 days in a row' },
     { id: 'sparkle', cat: 'trail', name: 'Sparkles', price: { drops: 400 }, rarity: 'rare' },
     { id: 'notes', cat: 'trail', name: 'Music notes', price: { drops: 600 }, rarity: 'rare' },
@@ -155,6 +157,18 @@ const SHOP = (() => {
       ctx.beginPath(); ctx.arc(9.5, -16, 3.6, Math.PI * 1.5, Math.PI * 0.5); ctx.stroke();
       ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(-6, -19, 2, 7);
       if (((t * 0.8) % 1) < 0.25) { ctx.fillStyle = '#fff'; star(ctx, 7, -22, 2.4, t); ctx.fill(); }
+    } else if (id === 'captainhat') {
+      // a pirate captain's tricorn: black felt, gold trim, a gold paint-drop badge and a red feather
+      ctx.fillStyle = '#ff3b4e';
+      ctx.beginPath(); ctx.ellipse(-face * 7, -13, 2.6, 8, -face * 0.7 + Math.sin(t * 3) * 0.08, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#26262b';
+      ctx.beginPath(); ctx.moveTo(-15, 1); ctx.quadraticCurveTo(-13, -7, -8, -10); ctx.quadraticCurveTo(0, -17, 8, -10);
+      ctx.quadraticCurveTo(13, -7, 15, 1); ctx.quadraticCurveTo(0, -4, -15, 1); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#ffc93c'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-12.5, -1.2); ctx.quadraticCurveTo(0, -6.5, 12.5, -1.2); ctx.stroke();
+      ctx.fillStyle = '#ffc93c'; ctx.strokeStyle = INK; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, -12.5); ctx.quadraticCurveTo(3, -8.5, 2.6, -7); ctx.arc(0, -7, 2.6, 0, Math.PI); ctx.quadraticCurveTo(-3, -8.5, 0, -12.5); ctx.fill(); ctx.stroke();
+      if (((t * 0.7) % 1) < 0.2) { ctx.fillStyle = '#fff'; star(ctx, 10, -10, 2.2, t); ctx.fill(); }
     } else if (id === 'laurel') {
       // a golden victory wreath: two branches of leaves curling around the head, a red ribbon at the back
       const g = ctx.createLinearGradient(-12, -10, 12, 4); g.addColorStop(0, '#fff3a0'); g.addColorStop(0.5, '#ffc93c'); g.addColorStop(1, '#c98a00');

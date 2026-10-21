@@ -101,6 +101,7 @@
   const uiBusy = () => (typeof UI !== 'undefined' && UI.modalOpen) || (typeof Story !== 'undefined' && Story.playing);
   window.addEventListener('keydown', (e) => {
     if (uiBusy()) return;
+    if (e.code === 'KeyG' && claimRect && claimSpot()) return;
     if (GAME_KEYS.includes(e.code)) e.preventDefault();
     if (!keys.has(e.code)) pressed.add(e.code);
     keys.add(e.code);
@@ -118,6 +119,7 @@
   canvas.addEventListener('mousedown', (e) => {
     if (typeof UI !== 'undefined' && UI.swallowPress) return;   // that press just closed the account menu
     toGame(e); Sound.init();
+    if (e.button === 0 && claimRect && inRect(mouse, claimRect) && claimSpot()) { e.preventDefault(); return; }
     // preventDefault below would stop the click from giving us the keyboard, so take it ourselves.
     // A click that only brings the keyboard back doesn't throw paint (it would cost a throw).
     const hadFocus = hasFocus;
@@ -396,6 +398,7 @@
         if (game.mode !== 'play') {
           if (!onCanvas(t) || (typeof UI !== 'undefined' && UI.swallowPress)) continue;
           if (game.mode === 'title' && p.y > 362 && p.y < 434 && (p.x < 420 || p.x > 540)) { pressed.add(p.x < 420 ? 'ArrowLeft' : 'ArrowRight'); continue; }   // ◀ ▶ around the level name
+          if (claimRect && inRect(p, claimRect) && claimSpot()) continue;                  // "sign in to claim it"
           const pb = game.mode === 'complete' && panelButtons.find((b) => inRect(p, b));
           if (pb) { pressed.add(pb.key); continue; }                                         // Menu / Retry / Next on the level-complete screen
           mouse.x = p.x; mouse.y = p.y; tapMouse('down');                                   // menus: a tap is a click
@@ -695,7 +698,15 @@
     const lv = levelDef(game.levelIdx);
     const run = { level: lv.daily ? 'Daily Chase' : lv.name, levelIdx: game.levelIdx, completed, time: result.time, stars: result.stars, throws: result.throws, deaths: result.deaths, played: game.world ? game.world.playFrames / 60 : result.time };
     Cloud.logRun(run).catch((e) => console.warn('logRun', e.code || e));   // guests too, for the stats
-    if (!Cloud.user) { result.cloud = lv.daily ? 'signin-daily' : 'signin'; return; }
+    if (!Cloud.user) {
+      result.cloud = lv.daily ? 'signin-daily' : 'signin';
+      if (completed) {                                         // where your best would land: "sign in to claim it"
+        const dailyBest = store.get('dailyBest', {});
+        const best = Math.min(result.time, lv.daily ? (dailyBest.day === lv.daily ? dailyBest.time : Infinity) : (game.best[lv.name] ?? Infinity));
+        Cloud.wouldRank(lv.name, best, lv.daily).then((c) => { result.claim = { ...c, time: best }; }).catch((e) => console.warn('wouldRank', e.code || e));
+      }
+      return;
+    }
     if (!completed) return;
     if (lv.daily) {                                          // today's board: your best time today, and your place
       result.cloud = 'saving';
@@ -737,8 +748,7 @@
 
   function cloudLine(r) {
     const c = r.cloud;
-    if (c === 'signin') return ['Sign in (top right) to put this on the leaderboards', 15, 'rgba(255,255,255,0.75)', 600];
-    if (c === 'signin-daily') return ['Sign in (top right) to race for today\'s top spots', 15, 'rgba(255,255,255,0.75)', 600];
+    if (c === 'signin' || c === 'signin-daily') return ['', 15, '#fff', 600];   // the "claim your spot" button goes here (drawClaim)
     if (c && c.daily) return [`${['🥇', '🥈', '🥉'][c.daily - 1] || '🏁'} #${c.daily} on today's Daily!`, 18, '#ffd166', 800];
     if (c === 'saving') return ['Posting to the leaderboards…', 15, 'rgba(255,255,255,0.75)', 600];
     if (c === 'error') return ['Could not reach the leaderboards', 15, 'rgba(255,255,255,0.6)', 500];
@@ -1015,6 +1025,7 @@
   function update() {
     game.tick++;
     if (game.chest && game.mode === 'complete') stepChest(game.chest);
+    if (giftShowing()) { updateGift(); return; }
     // catch up on achievements earned before they existed, once the splash is gone
     if (!achReady && !document.getElementById('splash') && !(typeof Story !== 'undefined' && Story.playing)) { achReady = true; achCheck(); }
     if (game.shake > 0) game.shake--;
@@ -1845,6 +1856,100 @@
     return { rows, total };
   }
 
+  // ---------- guests: "you'd be #3, sign in to claim it" ----------
+  // On the level-complete screen, a guest sees where their best time would land on the leaderboard,
+  // as a button that signs in. Signing in posts their bests (syncProgress) and gives the sign-in gift.
+  const GIFT_DROPS = 500;
+  let claimRect = null;
+  function claimText(r) {
+    const c = r.claim, gift = game.wallet.signinGift ? '' : `  ·  🎁 +${GIFT_DROPS} Drops`;
+    const where = r.daily ? "today's board" : 'the board';
+    if (c && c.rank) return `${['🥇', '🥈', '🥉'][c.rank - 1] || '🏆'} ${c.time.toFixed(3)}s would be #${c.rank} on ${where}!  Sign in to claim it${gift}`;
+    if (c && c.gap) return `⏱ ${c.gap.toFixed(2)}s from the top 10.  Sign in to join the leaderboard${gift}`;
+    return `🏆 Sign in to join the leaderboards${gift}`;
+  }
+  function drawClaim(r, y) {
+    claimRect = null;
+    if (!online() || Cloud.user || (r.cloud !== 'signin' && r.cloud !== 'signin-daily')) return;
+    if (!r.claimNoted) { r.claimNoted = true; Cloud.note('claimShown'); }
+    const str = claimText(r), size = 17;
+    ctx.font = `900 ${size}px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif`;
+    const w = Math.min(W - 40, ctx.measureText(str).width + 44), h = 36, pulse = 1 + Math.sin(game.tick * 0.12) * 0.025;
+    claimRect = { x: W / 2 - w / 2, y: y - h / 2, w, h };
+    ctx.save(); ctx.translate(W / 2, y); ctx.scale(pulse, pulse);
+    ctx.fillStyle = '#ffd166'; roundRect(-w / 2, -h / 2, w, h, 18); ctx.fill();
+    ctx.strokeStyle = '#fff3c4'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+    text(str, W / 2, y + 1, size, INK, 'center', 900);
+  }
+  function claimSpot() {
+    if (!claimRect || game.mode !== 'complete' || typeof UI === 'undefined') return false;
+    Cloud.note('claimClick');
+    UI.signIn('claim');
+    return true;
+  }
+
+  // ---------- after signing in ----------
+  // Today's Daily time set as a guest goes on today's board, and a first sign-in opens the gift chest:
+  // Paint Drops and the Captain's Hat.
+  function afterSignIn() {
+    if (!Cloud.user) return;
+    const best = store.get('dailyBest', {}), day = Daily.key();
+    if (best.day === day) {
+      Cloud.submitDaily(day, { time: best.time, stars: dailyFlags() & 2 ? 3 : 0, ghost: Ghost.loadMine('daily:' + day) })
+        .catch((e) => console.warn('claimDaily', e.code || e));
+    }
+    if (!game.wallet.signinGift) giveSigninGift();
+  }
+  function giveSigninGift() {
+    const wl = game.wallet;
+    wl.signinGift = Date.now();
+    wl.earned += GIFT_DROPS;
+    if (!wl.owned.includes('captainhat')) wl.owned.push('captainhat');
+    saveWallet();
+    Cloud.saveProfile(localProgress(), LEVELS).catch((e) => console.warn('saveProfile', e.code || e));
+    game.gift = Chest.make({ look: 'captain', anim: 'burst', total: GIFT_DROPS, x: W / 2, y: H / 2 + 60, counter: { x: W / 2, y: H / 2 - 50 }, scale: 1.1 });
+  }
+  // shown over everything except a level in progress (and any open window)
+  const giftShowing = () => game.gift && game.mode !== 'play' && !uiBusy();
+  function updateGift() {
+    const g = game.gift;
+    stepChest(g);
+    if (tapped('Enter', 'Space', 'Escape') || mouse.down) {
+      mouse.down = false;
+      if (!g.opened) openGift(); else if (g.done) game.gift = null;
+    }
+    pressed.clear();
+  }
+  function openGift() { Chest.open(game.gift); sfx.can(); }
+  function drawGift() {
+    const g = game.gift;
+    ctx.fillStyle = '#17171b'; ctx.fillRect(0, 0, W, H);
+    text('🎁 Thanks for signing in!', W / 2, 64, 40, '#fff', 'center', 900);
+    text('Your times are on the leaderboards now. And this chest is yours:', W / 2, 106, 17, 'rgba(255,255,255,0.75)', 'center', 600);
+    const total = `+${g.shown}  Paint Drops`;
+    ctx.font = '900 30px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
+    const tw = ctx.measureText(total).width;
+    g.counter = { x: W / 2 - tw / 2 - 22, y: H / 2 - 48 };
+    if (g.n || g.done) { text(total, W / 2, H / 2 - 50, 30, '#7cc4ff', 'center', 900); SHOP.drawDrop(ctx, g.counter.x, g.counter.y, 9); }
+    Chest.draw(ctx, g);
+    if (!g.opened) text(touchMode ? 'Tap the chest!' : 'Click the chest!', W / 2, H / 2 + 150, 20, '#ffd166', 'center', 900);
+    if (g.done) {
+      const line = "New hat: the Captain's Hat!  Wear it from the Store.", ly = H / 2 + 172;
+      ctx.font = '900 20px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
+      const lw = ctx.measureText(line).width;
+      // your hero wearing it, on a paper badge
+      const ch = currentCharacter(), bx = W / 2 - lw / 2 - 34, t = game.tick / 60;
+      ctx.save(); ctx.translate(bx, ly + 22);
+      ctx.fillStyle = '#efece4'; ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -32, 46, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ch.draw(ctx, { s: 1.4, col: COLOR_HEX[ALL_COLORS[0]], t, run: 0, moving: 0, air: false, face: 1, squash: 1 });
+      SHOP.drawHat(ctx, 'captainhat', 1.4, ch.id, 1, t);
+      ctx.restore();
+      text(line, W / 2 + 24, ly, 20, '#ffd166', 'center', 900);
+      text(touchMode ? 'Tap to continue' : 'Click or press Enter to continue', W / 2, H - 36, 15, 'rgba(255,255,255,0.6)', 'center', 600);
+    }
+  }
+
   // ---------- the reward chest on the level-complete screen ----------
   // Your Paint Drops wait in the Captain's chest (chest.js), in the middle of the screen: click it and it
   // shakes, bursts open, and the drops fountain up and rain into your total.
@@ -2045,6 +2150,7 @@
         ctx.font = '900 26px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif';
         const tw0 = ctx.measureText(`+${shown}  Paint Drops`).width;
         drawChestScene(ch, y0, { x: W / 2 - tw0 / 2 - 20, y: y0 + 5 * 40 + 2 });
+        if (showRows) drawClaim(r, y0 + 7 * 40); else claimRect = null;
         if (touchMode) drawPanelButtons([['☰ Menu', 'Escape'], ['↺ Retry', 'KeyR'], [!ch.opened ? '🎁 Open' : r.daily ? 'Board ▶' : 'Next ▶', 'Enter']], y0 + 10 * 40);
         [0, 1, 2].forEach((i) => drawCan(W / 2 - 56 + i * 56, y0 + 62, 1.6, i < r.stars, COLOR_HEX[ALL_COLORS[i]]));
         if (r.newStars) text('new record!', W / 2 + 96, y0 + 62, 16, '#ffd166', 'left', 800);
@@ -2064,6 +2170,7 @@
         ]);
       }
     }
+    if (giftShowing()) drawGift();
     if (embedded && !hasFocus && game.mode === 'play') {
       ctx.globalAlpha = 0.9 + Math.sin(game.tick * 0.08) * 0.1;
       ctx.fillStyle = 'rgba(28,28,31,0.88)';
@@ -2085,7 +2192,7 @@
 
   // Handy for poking at the game from the browser console.
   // debug/tools: advance(n) runs n fixed steps and draws once (used for trailers and screenshots)
-  window.paintRunner = { game, startLevel, resetProgress, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
+  window.paintRunner = { game, startLevel, resetProgress, giveSigninGift, claim: () => claimRect, advance(n = 1) { for (let k = 0; k < n; k++) update(); render(); } };
 
   // ---------- how fast the Eraser chases ----------
   // Very fast with a keyboard and mouse, Fast with touch controls; index.html#eraser=a / b / c tries one.
@@ -2133,6 +2240,8 @@
       currentLevel: () => (game.mode === 'title' ? game.menuIdx : game.levelIdx),
       localProgress,
       applyProgress,
+      afterSignIn,
+      giftPending: () => !game.wallet.signinGift,
       resetProgress,
       achievements: () => { achCheck(); return Achievements.list(); },
       // the Daily window: today's chase, your streak, the time left

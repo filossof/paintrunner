@@ -618,6 +618,9 @@ body.touch .set-sec + .set-sec { margin-top: 10px; padding-top: 10px; }
 .daily-board ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .daily-board li { display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 10px; padding: 6px 10px; border: 1.5px solid rgba(0,0,0,0.08); }
 .daily-board li.me { border-color: var(--gold); background: #fff6d6; }
+.daily-board li.guest { background: transparent; border: 1.5px dashed rgba(0,0,0,0.3); color: var(--ink-2, #5a5862); }
+.daily-board li.guest .btn { margin-left: 8px; }
+.gift-badge { margin-left: 8px; padding: 2px 7px; border-radius: 999px; background: #ffd166; color: #1c1c1f; font-size: 12px; font-weight: 800; }
 .daily-board .rk { width: 30px; text-align: center; font: 900 16px var(--font); }
 .daily-board .nm { flex: 1; font-weight: 700; }
 .daily-board .tm { font: 800 14px var(--font); font-variant-numeric: tabular-nums; }

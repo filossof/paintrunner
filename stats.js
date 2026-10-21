@@ -254,6 +254,8 @@
         ${kpi(num(active.length), 'Active players', `${num(activeMembers)} signed in · ${num(activeGuests)} guests`)}
         ${kpi(pct(activeMembers, active.length), 'Sign-in rate', 'active players signed in with Google')}
         ${kpi(num(converted.length), 'Guests who signed in', 'played as a guest first')}
+        ${kpi(num(sum(sessR, (s) => (s.funnel && s.funnel.claimShown) || 0)), 'Sign-in prompts shown', `${num(sum(sessR, (s) => (s.funnel && (s.funnel.claimClick || s.funnel.signinClick)) || 0))} clicks · ${num(sessR.filter((s) => s.funnel && s.funnel.signedIn).length)} signed in`)}
+        ${kpi(pct(sessR.filter((s) => s.host === 'itch').length, sessR.filter((s) => s.host).length), 'Visits from itch.io', 'of visits that recorded where they came from')}
         ${kpi(num(newcomers.length), 'New players')}
         ${kpi(dur(playSecs), 'Time played')}
         ${kpi(dur(withTime.length ? playSecs / withTime.length : 0), 'Time per player', 'average')}

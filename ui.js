@@ -35,7 +35,7 @@ const UI = (() => {
             <button class="btn small" data-act="signout">Sign out</button>
           </div>
         </div>`
-      : `<button class="btn" data-act="signin">${GOOGLE_G}<span>Sign in with Google</span></button>`;
+      : `<button class="btn" data-act="signin">${GOOGLE_G}<span>Sign in with Google</span>${api.giftPending && api.giftPending() ? '<span class="gift-badge">🎁 +500</span>' : ''}</button>`;
     // the Daily: pulses with NEW until today's is done
     const dailyDone = api.daily && api.daily().flags & 1;
     const left = `<button class="btn daily${dailyDone ? '' : ' fresh'}" data-act="daily">📅 Daily${dailyDone ? ' ✓' : ' <b class="new-badge">NEW</b>'}</button>` +
@@ -89,9 +89,9 @@ const UI = (() => {
   // keep clicks on the overlay from also hitting the game underneath
   overlay.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  async function signIn() {
+  async function signIn(via) {
     try {
-      await Cloud.signIn();
+      await Cloud.signIn(typeof via === 'string' ? via : 'menu');
     } catch (e) {
       console.error(e);
       if (e.code === 'embedded') api.toast('Sign-in is blocked on this page. Play at filossof.github.io/paintrunner to sign in.', 6000);
@@ -104,6 +104,7 @@ const UI = (() => {
     try {
       const merged = await Cloud.syncProgress(api.localProgress(), LEVELS);
       if (merged) { api.applyProgress(merged); api.toast('☁ Progress synced'); }
+      if (merged && api.afterSignIn) api.afterSignIn();   // today's Daily time, and the sign-in gift
     } catch (e) {
       console.warn('sync failed', e);
       if (e && e.code === 'permission-denied') api.toast('Online saving is not switched on yet');
@@ -226,10 +227,19 @@ const UI = (() => {
       const medal = (rank) => ['🥇', '🥈', '🥉'][rank - 1] || `${rank}.`;
       board.innerHTML = rows.length ? `<ol>${rows.map((r) => `<li class="${r.uid === uid ? 'me' : ''}"><span class="rk">${medal(r.rank)}</span>${r.photo ? avatar(r.photo) : ''}<span class="nm">${esc(r.name)}</span><span class="tm">${r.time.toFixed(3)}s</span></li>`).join('')}</ol>`
         : '<p class="note">Nobody has finished today\'s chase yet. Be the first!</p>';
-      if (!uid) board.insertAdjacentHTML('beforeend', `<p class="note">Want your name up here? <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google</button></p>`);
+      if (!uid && d.best !== null) {
+        // a guest's time, where it would be: grayed out, with a button to claim it
+        const rank = 1 + rows.filter((x) => x.time < d.best).length;
+        const li = `<li class="guest"><span class="rk">${rank}.</span><span class="nm">You <small>(guest)</small></span><span class="tm">${d.best.toFixed(3)}s</span><button class="btn small" data-act="signin">Sign in to claim</button></li>`;
+        const ol = board.querySelector('ol');
+        if (!ol) board.innerHTML = `<ol>${li}</ol>`;
+        else if (rank <= rows.length) ol.children[rank - 1].insertAdjacentHTML('beforebegin', li);
+        else ol.insertAdjacentHTML('beforeend', li);
+      }
+      if (!uid) board.insertAdjacentHTML('beforeend', `<p class="note">${d.best !== null ? 'Sign in and your time goes on today\'s board.' : 'Want your name up here?'} <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google</button>${api.giftPending() ? ' <b>🎁 +500 Drops</b> for signing in' : ''}</p>`);
       else if (me && !rows.some((r) => r.uid === uid)) board.insertAdjacentHTML('beforeend', `<p class="note">Your best today: ${me.time.toFixed(3)}s</p>`);
     }).catch((e) => { if (document.body.contains(board)) board.innerHTML = `<p class="note">${friendlyError(e)}</p>`; });
-    board.addEventListener('click', (e) => { if (e.target.closest('[data-act="signin"]')) signIn(); });
+    board.addEventListener('click', (e) => { if (e.target.closest('[data-act="signin"]')) { Cloud.note('claimClick'); signIn('daily'); } });
   }
 
   // ---------- achievements ----------
@@ -690,7 +700,7 @@ const UI = (() => {
     modal.querySelector('select').value = String(levelIdx);
     content.innerHTML = '<p class="note">Loading…</p>';
     const signInNote = Cloud.user ? '' :
-      `<p class="note">Want your name up here? <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google</button></p>`;
+      `<p class="note">Want your name up here? <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google</button>${api.giftPending() ? ' <b>🎁 +500 Drops</b> for signing in' : ''}</p>`;
     const requested = `${view}:${levelIdx}`;
     try {
       if (view === 'level') {
@@ -736,6 +746,7 @@ const UI = (() => {
     openGhostIntro,
     openAchievements,
     openDaily,
+    signIn,
     refresh: () => render(),
     get modalOpen() { return !!modal; },
     // true right after a press that only closed the account menu: the game ignores that press
