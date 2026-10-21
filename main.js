@@ -700,7 +700,7 @@
     if (lv.daily) {                                          // today's board: your best time today, and your place
       result.cloud = 'saving';
       Cloud.saveProfile(localProgress(), LEVELS).catch(() => { });
-      Cloud.submitDaily(lv.daily, { time: result.time, stars: result.stars })
+      Cloud.submitDaily(lv.daily, { time: result.time, stars: result.stars, ghost })
         .then((r) => { result.cloud = { daily: r.rank }; dailyPodium(r.rank); })
         .catch((e) => { console.warn('submitDaily', e.code || e); result.cloud = 'error'; });
       return;
@@ -805,7 +805,7 @@
   const topGhosts = {};
   let ghostReq = 0;
   function loadGhost(i) {
-    if (i < 0) { Ghost.use(null); return; }   // (no ghosts in the Daily)
+    if (i < 0) return loadDailyGhost();
     const name = LEVELS[i].name, req = ++ghostReq;
     Ghost.use(null);
     const mine = () => {
@@ -861,6 +861,22 @@
     }
   }
   if (online()) Cloud.onChange((u) => { if (u) setTimeout(uploadPendingGhosts, 4000); });   // after the progress sync
+
+  // the Daily: today's fastest run (or your own best today)
+  function loadDailyGhost() {
+    const day = dailyDef.daily, req = ++ghostReq, mineKey = 'daily:' + day;
+    Ghost.use(null);
+    if (Ghost.mode === 'off') return;
+    const mine = () => { const g = Ghost.loadMine(mineKey); if (g) Ghost.use(g, 'Your best today'); return !!g; };
+    if (Ghost.mode === 'mine' || !online()) { mine(); return; }
+    Cloud.dailyGhost(day).then((r) => {
+      if (req !== ghostReq || game.mode !== 'play') return;
+      if (r) {
+        const who = Cloud.user && r.ghost.uid === Cloud.user.uid ? 'You' : r.ghost.name;
+        Ghost.use(r.ghost, r.isRecord ? `#1 today · ${who}` : `Fastest ghost · ${who}`);
+      } else if (!mine()) showToast('👻 No ghost yet today. Set the time to beat!', 2200);
+    }).catch(() => { if (req === ghostReq) mine(); });
+  }
 
   function setGhostMode(m) {
     Ghost.setMode(m);
@@ -1962,11 +1978,13 @@
     const isBest = best.day !== day || time < best.time;
     if (isBest) store.set('dailyBest', { day, time });
     const earned = { rows, total };
+    const ghost = Ghost.finished(time, { char: currentCharacter().id, hat: look().hat, skin: look().skin });
+    if (ghost) Ghost.keepMine('daily:' + day, ghost);
     game.lastResult = { daily: day, time, throws: w.throws, deaths: w.deaths, isBest, stars, newStars: false, cloud: null, unlockedNow: [], earned, at: game.tick };
     newChest(earned);
     if (w.throws === 1) Achievements.unlock('minimalist');
     achCheck();
-    postResult(game.lastResult, true, null);
+    postResult(game.lastResult, true, ghost);
     game.mode = 'complete';
     if (typeof UI !== 'undefined' && UI.refresh) setTimeout(() => UI.refresh(), 0);
   }

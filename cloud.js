@@ -405,18 +405,28 @@ const Cloud = (() => {
       return d.exists ? d.data() : null;
     },
 
-    /* The Daily Chase: keeps your best time today, returns your place on today's board. */
+    /* The Daily Chase: keeps your best time today (and its recording, the ghost others race),
+       returns your place on today's board. */
     async submitDaily(day, r) {
       if (!user) return { rank: null };
       const ref = db.collection('pr_daily').doc(day).collection('pr_scores').doc(user.uid);
       const old = await ref.get();
       const time = round3(r.time);
       if (!old.exists || time < old.data().time) {
-        await track(ref.set({ uid: user.uid, name: publicName(user), photo: user.photoURL || '', time, stars: r.stars || 0, at: Date.now() }));
+        const row = { uid: user.uid, name: publicName(user), photo: user.photoURL || '', time, stars: r.stars || 0, at: Date.now() };
+        if (r.ghost) Object.assign(row, { data: r.ghost.data, char: r.ghost.char || 'blob', hat: r.ghost.hat || '', skin: r.ghost.skin || '' });
+        await track(ref.set(row));
       }
       const mine = Math.min(time, old.exists ? old.data().time : Infinity);
       const better = await db.collection('pr_daily').doc(day).collection('pr_scores').where('time', '<', mine).limit(50).get();
       return { rank: better.size >= 50 ? null : better.size + 1 };
+    },
+    /* The fastest recorded run of today's Daily, to race as a ghost (and whether it's the #1 time). */
+    async dailyGhost(day) {
+      const snap = await db.collection('pr_daily').doc(day).collection('pr_scores').orderBy('time').limit(5).get();
+      const rows = snap.docs.map((d) => d.data());
+      const g = rows.find((x) => x.data);
+      return g ? { ghost: g, isRecord: g === rows[0] } : null;
     },
     /* Today's fastest runs (ties: whoever got there first). */
     async dailyTop(day, limit = 10) {
