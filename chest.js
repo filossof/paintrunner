@@ -12,8 +12,8 @@ const Chest = (() => {
   const INK = '#1c1c1f';
   const PAINTS = ['#2f7bff', '#ff3b4e', '#1fc160', '#ffc93c', '#9b5de5'];
   const LOOKS = {
-    royal: 'Royal treasure', painter: "Painter's chest", inkchest: 'Ink chest', iron: "Adventurer's chest", mimic: 'Mimic',
-    pirate: 'Classic pirate', ink: 'Ink & paint', can: 'Paint can', crystal: 'Crystal', gold: 'Golden',
+    captain: "Captain's chest", treasure: 'Overflowing treasure', sunken: 'Sunken treasure', rope: "Explorer's chest", mahogany: 'Mahogany chest',
+    pirate: 'Classic pirate',
   };
   const ANIMS = {
     burst: 'Shake & burst', geyser: 'Paint geyser', spring: 'Spring lid', magnet: 'Magnet pull', jackpot: 'Jackpot',
@@ -53,10 +53,124 @@ const Chest = (() => {
     }
   }
 
+  // ---------------- wood ----------------
+  // planks across the body, each a slightly different shade, with grain and the odd knot
+  function planks(g, x, y, w, h, n, light, dark, seed) {
+    const ph = h / n;
+    for (let i = 0; i < n; i++) {
+      const py = y + i * ph, k = ((i * 37 + seed * 11) % 7) / 7;
+      const gr = g.createLinearGradient(0, py, 0, py + ph); gr.addColorStop(0, light); gr.addColorStop(1, dark);
+      g.fillStyle = gr; g.fillRect(x, py, w, ph);
+      g.fillStyle = `rgba(0,0,0,${0.03 + k * 0.09})`; g.fillRect(x, py, w, ph);
+      g.strokeStyle = 'rgba(40,20,5,0.32)'; g.lineWidth = 1.2;
+      for (let j = 0; j < 2; j++) { const gy = py + ph * (0.3 + j * 0.4); g.beginPath(); g.moveTo(x, gy); for (let gx = x; gx <= x + w; gx += 8) g.lineTo(gx, gy + Math.sin(gx * 0.07 + i * 2 + j * 3 + seed) * 1.5); g.stroke(); }
+      if ((i + seed) % 3 === 0) { g.beginPath(); g.ellipse(x + w * (0.15 + k * 0.7), py + ph / 2, 4, 2, 0, 0, Math.PI * 2); g.stroke(); }
+      g.strokeStyle = 'rgba(30,15,5,0.7)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, py); g.lineTo(x + w, py); g.stroke();
+    }
+  }
+  function woodBody(g, light, dark, seed) {
+    g.save(); rr(g, -60, -10, 120, 66, 6); g.clip(); planks(g, -60, -10, 120, 66, 4, light, dark, seed); g.restore();
+    g.strokeStyle = INK; g.lineWidth = 4; rr(g, -60, -10, 120, 66, 6); g.stroke();
+  }
+  const dome = (g) => { g.beginPath(); g.moveTo(-60, -10); g.lineTo(-60, -26); g.bezierCurveTo(-56, -62, 56, -62, 60, -26); g.lineTo(60, -10); g.closePath(); };
+  // a domed lid made of curved staves
+  function woodLid(g, light, dark, seed) {
+    g.save(); dome(g); g.clip();
+    const gr = g.createLinearGradient(0, -54, 0, -10); gr.addColorStop(0, light); gr.addColorStop(1, dark); g.fillStyle = gr; g.fillRect(-62, -60, 124, 52);
+    for (let i = 0; i < 3; i++) {
+      const f = (i + 1) / 3, y0 = -10 - 16 * f, yc = -10 - 52 * f;
+      g.strokeStyle = 'rgba(30,15,5,0.7)'; g.lineWidth = 2; g.beginPath(); g.moveTo(-60, y0); g.bezierCurveTo(-56, yc, 56, yc, 60, y0); g.stroke();
+      g.strokeStyle = 'rgba(40,20,5,0.3)'; g.lineWidth = 1.2; const f2 = f - 0.17, y1 = -10 - 16 * f2, yc1 = -10 - 52 * f2 + Math.sin(seed + i) * 2;
+      g.beginPath(); g.moveTo(-60, y1); g.bezierCurveTo(-56, yc1, 56, yc1, 60, y1); g.stroke();
+    }
+    g.restore();
+    g.strokeStyle = INK; g.lineWidth = 4; dome(g); g.stroke();
+  }
+  const stud = (g, x, y, r, col) => { g.fillStyle = col; g.strokeStyle = 'rgba(28,28,31,0.7)'; g.lineWidth = 1; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.stroke(); g.fillStyle = 'rgba(255,255,255,0.6)'; g.beginPath(); g.arc(x - r * 0.3, y - r * 0.3, r * 0.35, 0, Math.PI * 2); g.fill(); };
+  const ironGrad = (g) => { const gr = g.createLinearGradient(0, -60, 0, 56); gr.addColorStop(0, '#5d626c'); gr.addColorStop(1, '#2c2f35'); return gr; };
+  const rustGrad = (g) => { const gr = g.createLinearGradient(0, -60, 0, 56); gr.addColorStop(0, '#b0683a'); gr.addColorStop(1, '#6b3516'); return gr; };
+  // vertical straps over the body (y -10..56) or the lid (clipped to the dome)
+  function straps(g, xs, w, fill, lid, studCol) {
+    g.save(); if (lid) { dome(g); g.clip(); }
+    for (const x of xs) {
+      g.fillStyle = fill; g.strokeStyle = INK; g.lineWidth = 2;
+      if (lid) { g.fillRect(x, -60, w, 50); g.strokeRect(x, -60, w, 50); } else { g.fillRect(x, -10, w, 66); g.strokeRect(x, -10, w, 66); }
+      if (studCol) for (let y = lid ? -42 : -2; y < (lid ? -10 : 56); y += 14) stud(g, x + w / 2, y, 2.2, studCol);
+    }
+    g.restore();
+  }
+  function coin(g, x, y, r = 6, tilt = 1) {
+    g.save(); g.translate(x, y); g.scale(tilt, 1);
+    g.fillStyle = '#ffcf40'; g.strokeStyle = '#8a5a00'; g.lineWidth = 1.5; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.strokeStyle = 'rgba(138,90,0,0.6)'; g.beginPath(); g.arc(0, 0, r * 0.6, 0, Math.PI * 2); g.stroke(); g.restore();
+  }
+  function rope(g, x, y0, y1, w) {
+    g.fillStyle = '#dcc28c'; g.strokeStyle = INK; g.lineWidth = 2; g.fillRect(x, y0, w, y1 - y0); g.strokeRect(x, y0, w, y1 - y0);
+    g.strokeStyle = 'rgba(110,80,30,0.7)'; g.lineWidth = 1.5;
+    for (let y = y0; y < y1; y += 5) { g.beginPath(); g.moveTo(x, y + 4); g.lineTo(x + w, y); g.stroke(); }
+  }
+
   // ---------------- the looks ----------------
   // Each draws the body (x -60..60, y -10..55) and the lid (x -60..60, y -48..-10, hinged at y -10).
   // t: time in seconds (for shimmer), glow: light from inside 0..1
   const BODY = {
+    captain(g, t) {
+      woodBody(g, '#8a5530', '#5a3215', 1);
+      straps(g, [-50, 39], 11, ironGrad(g), false, '#9aa0aa');
+      g.fillStyle = ironGrad(g); g.strokeStyle = INK; g.lineWidth = 2; g.fillRect(-60, 46, 120, 10); g.strokeRect(-60, 46, 120, 10);
+      for (let x = -52; x <= 52; x += 13) stud(g, x, 51, 2, '#9aa0aa');
+      // the iron hasp with its ring
+      g.fillStyle = ironGrad(g); rr(g, -11, -10, 22, 24, 3); g.fill(); g.stroke(); stud(g, 0, -4, 2.4, '#9aa0aa');
+      g.strokeStyle = '#2c2f35'; g.lineWidth = 3.5; g.beginPath(); g.arc(0, 20, 6, 0, Math.PI * 2); g.stroke();
+    },
+    treasure(g, t) {
+      woodBody(g, '#c47c40', '#8a4f22', 3);
+      straps(g, [-47, 37], 10, goldGrad(g, -60, 0, 60, 0), false, '#fff3c0');
+      // a pearl necklace hanging out of the seam
+      for (let i = 0; i <= 10; i++) { const u = i / 10, px = -42 + u * 40, py = -6 + Math.sin(u * Math.PI) * 16; g.fillStyle = '#fbf6ee'; g.strokeStyle = 'rgba(28,28,31,0.5)'; g.lineWidth = 1; g.beginPath(); g.arc(px, py, 3, 0, Math.PI * 2); g.fill(); g.stroke(); }
+      g.fillStyle = '#ff3b4e'; g.strokeStyle = INK; g.lineWidth = 1.5; g.beginPath(); g.moveTo(-22, 10); g.lineTo(-17, 15); g.lineTo(-22, 21); g.lineTo(-27, 15); g.closePath(); g.fill(); g.stroke();
+      // the brass lock
+      g.fillStyle = goldGrad(g, -12, 0, 12, 0); g.lineWidth = 2; g.beginPath(); g.moveTo(-11, -8); g.lineTo(11, -8); g.lineTo(11, 8); g.quadraticCurveTo(0, 20, -11, 8); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = INK; g.beginPath(); g.arc(0, 1, 3, 0, Math.PI * 2); g.fill(); g.fillRect(-1.3, 1, 2.6, 7);
+      // spilled coins at its feet
+      [[-66, 52], [-58, 54], [-62, 46], [62, 53], [70, 54], [66, 47]].forEach(([x, y], i) => coin(g, x, y, 6, i % 2 ? 1 : 0.55));
+      if ((t * 0.6) % 1 < 0.2) sparkle(g, 9, -4, 6, 1 - ((t * 0.6) % 1) / 0.2);
+    },
+    sunken(g, t) {
+      woodBody(g, '#8f9c82', '#5c6852', 2);
+      straps(g, [-48, 38], 10, rustGrad(g), false, '#c98b5e');
+      g.fillStyle = 'rgba(70,35,10,0.45)'; [[-44, 30], [42, 8], [-45, 4]].forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill(); });
+      // barnacles
+      [[-30, 44], [-24, 47], [-34, 49], [20, 34], [26, 38], [52, 2]].forEach(([x, y], i) => { const rad = 3 + (i % 2) * 1.5; g.fillStyle = '#e9e4d6'; g.strokeStyle = 'rgba(28,28,31,0.6)'; g.lineWidth = 1; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill(); g.stroke(); g.fillStyle = '#6f6a5c'; g.beginPath(); g.arc(x, y, rad * 0.35, 0, Math.PI * 2); g.fill(); });
+      // a starfish on the corner
+      g.fillStyle = '#ff8a3c'; g.strokeStyle = INK; g.lineWidth = 1.5; g.beginPath();
+      for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, q = k % 2 ? 4 : 10; g.lineTo(-44 + Math.cos(a) * q, 18 + Math.sin(a) * q); }
+      g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = rustGrad(g); g.strokeStyle = INK; g.lineWidth = 2; rr(g, -10, -9, 20, 20, 3); g.fill(); g.stroke();
+      g.fillStyle = INK; g.beginPath(); g.arc(0, 0, 2.6, 0, Math.PI * 2); g.fill(); g.fillRect(-1.1, 0, 2.2, 6);
+    },
+    rope(g, t) {
+      woodBody(g, '#d6a56b', '#a5703c', 4);
+      rope(g, -44, -10, 56, 9); rope(g, 35, -10, 56, 9);
+      // rope handles
+      for (const sx of [-1, 1]) { g.strokeStyle = '#c9ad74'; g.lineWidth = 5; g.beginPath(); g.arc(sx * 60, 20, 9, sx > 0 ? -Math.PI / 2 : Math.PI / 2, sx > 0 ? Math.PI / 2 : Math.PI * 1.5); g.stroke(); g.strokeStyle = 'rgba(28,28,31,0.5)'; g.lineWidth = 1; g.stroke(); }
+      // a red wax seal across the seam
+      g.fillStyle = '#c4202f'; g.strokeStyle = INK; g.lineWidth = 2; g.beginPath();
+      for (let k = 0; k < 14; k++) { const a = k / 14 * Math.PI * 2, q = k % 2 ? 11 : 13; g.lineTo(Math.cos(a) * q, -4 + Math.sin(a) * q); }
+      g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = '#c4202f'; g.fillRect(-3, 6, 4, 9); g.beginPath(); g.arc(-1, 15, 2.2, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(-5, -9); g.lineTo(5, 1); g.moveTo(5, -9); g.lineTo(-5, 1); g.stroke();
+    },
+    mahogany(g, t) {
+      woodBody(g, '#a4462a', '#5e2010', 5);
+      const br = goldGrad(g, -60, 0, 60, 0);
+      g.fillStyle = br; g.strokeStyle = INK; g.lineWidth = 2;
+      for (const [x, y, sx, sy] of [[-60, 56, 1, -1], [60, 56, -1, -1], [-60, -10, 1, 1], [60, -10, -1, 1]]) { g.beginPath(); g.moveTo(x, y); g.lineTo(x + sx * 18, y); g.lineTo(x, y + sy * 18); g.closePath(); g.fill(); g.stroke(); }
+      for (let x = -40; x <= 40; x += 10) { stud(g, x, -5, 2, '#ffe58a'); stud(g, x, 51, 2, '#ffe58a'); }
+      g.fillStyle = br; g.beginPath(); g.moveTo(-13, -8); g.lineTo(13, -8); g.lineTo(13, 10); g.lineTo(0, 22); g.lineTo(-13, 10); g.closePath(); g.fill(); g.stroke();
+      g.fillStyle = INK; g.beginPath(); g.arc(0, 2, 3.2, 0, Math.PI * 2); g.fill(); g.fillRect(-1.4, 2, 2.8, 8);
+      if ((t * 0.5) % 1 < 0.2) sparkle(g, 11, -2, 6, 1 - ((t * 0.5) % 1) / 0.2);
+    },
     royal(g, t) {
       const wood = g.createLinearGradient(0, -10, 0, 55); wood.addColorStop(0, '#9c3f1c'); wood.addColorStop(1, '#5a210d');
       g.fillStyle = wood; g.strokeStyle = INK; g.lineWidth = 4; rr(g, -60, -10, 120, 66, 6); g.fill(); g.stroke();
@@ -171,6 +285,45 @@ const Chest = (() => {
     },
   };
   const LID = {
+    captain(g) {
+      woodLid(g, '#9a6238', '#6a3d1c', 1);
+      straps(g, [-50, 39], 11, ironGrad(g), true, '#9aa0aa');
+      g.fillStyle = ironGrad(g); g.strokeStyle = INK; g.lineWidth = 2; g.fillRect(-60, -17, 120, 7); g.strokeRect(-60, -17, 120, 7);
+    },
+    treasure(g) {
+      [[-30, -9, 0.6], [-20, -8, 1], [24, -9, 1], [33, -8, 0.5], [6, -9, 0.7]].forEach(([x, y, k]) => coin(g, x, y, 6, k));   // coins peeking out
+      woodLid(g, '#d48a4a', '#9a5a28', 3);
+      straps(g, [-47, 37], 10, goldGrad(g, -60, 0, 60, 0), true, '#fff3c0');
+      g.save(); dome(g); g.clip(); g.fillStyle = goldGrad(g, -60, 0, 60, 0); g.strokeStyle = INK; g.lineWidth = 2; g.fillRect(-62, -17, 124, 7); g.strokeRect(-62, -17, 124, 7); g.restore();
+    },
+    sunken(g, t) {
+      woodLid(g, '#9aa88c', '#66735a', 2);
+      straps(g, [-48, 38], 10, rustGrad(g), true, '#c98b5e');
+      // seaweed hanging over the front, and bubbles
+      [[-30, 22], [-24, 16], [18, 26], [26, 18]].forEach(([x, len], i) => {
+        g.strokeStyle = i % 2 ? '#2e9a52' : '#1f7a3e'; g.lineWidth = 4; g.lineCap = 'round'; g.beginPath(); g.moveTo(x, -14);
+        for (let y = 0; y <= len; y += 4) g.lineTo(x + Math.sin(y * 0.3 + t * 2 + i) * 3, -14 + y); g.stroke();
+      });
+      g.lineCap = 'butt';
+      for (let i = 0; i < 3; i++) { const u = (t * 0.6 + i / 3) % 1; g.strokeStyle = `rgba(200,235,255,${0.9 * (1 - u)})`; g.lineWidth = 1.5; g.beginPath(); g.arc(46 + Math.sin(u * 8 + i) * 4, -40 - u * 60, 3 + i, 0, Math.PI * 2); g.stroke(); }
+    },
+    rope(g) {
+      woodLid(g, '#e0b27a', '#b07b46', 4);
+      g.save(); dome(g); g.clip(); rope(g, -44, -60, -10, 9); rope(g, 35, -60, -10, 9); g.restore();
+      // a rolled-up map tucked on top
+      g.save(); g.translate(-4, -46); g.rotate(-0.12);
+      g.fillStyle = '#f1dfb0'; g.strokeStyle = INK; g.lineWidth = 2; rr(g, -26, -6, 52, 12, 6); g.fill(); g.stroke();
+      g.strokeStyle = 'rgba(28,28,31,0.4)'; g.beginPath(); g.ellipse(26, 0, 3, 6, 0, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = '#c4202f'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(-3, -6); g.lineTo(-3, 6); g.stroke();
+      g.restore();
+    },
+    mahogany(g) {
+      woodLid(g, '#b45434', '#74301a', 5);
+      g.save(); dome(g); g.clip();
+      g.strokeStyle = goldGrad(g, -60, 0, 60, 0); g.lineWidth = 5; g.beginPath(); g.moveTo(-56, -10); g.lineTo(-56, -26); g.bezierCurveTo(-52, -58, 52, -58, 56, -26); g.lineTo(56, -10); g.stroke();
+      g.restore();
+      for (let k = 1; k < 8; k++) { const u = k / 8, x = -56 * Math.pow(1 - u, 3) + 3 * (1 - u) * (1 - u) * u * -52 + 3 * (1 - u) * u * u * 52 + u * u * u * 56, y = -26 * Math.pow(1 - u, 3) + 3 * (1 - u) * (1 - u) * u * -58 + 3 * (1 - u) * u * u * -58 + u * u * u * -26; stud(g, x, y, 2, '#ffe58a'); }
+    },
     royal(g) {
       const wood = g.createLinearGradient(0, -64, 0, -10); wood.addColorStop(0, '#b44c22'); wood.addColorStop(1, '#7a2e12');
       g.fillStyle = wood; g.strokeStyle = INK; g.lineWidth = 4;

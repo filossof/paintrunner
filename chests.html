@@ -36,13 +36,13 @@
   <div class="row"><h2>The chest</h2><div class="opts" id="looks"></div></div>
   <div class="row"><h2>How it opens</h2><div class="opts" id="anims"></div></div>
   <div class="go"><button id="open">🎁 Open it</button><button id="again" class="alt">↺ Open again</button></div>
-  <p class="note">Each animation works with every chest. The game would use one combination for normal levels, and maybe the Golden chest with the Jackpot for special rewards.</p>
+  <p class="note">Each animation works with every chest. The game would use one chest for normal levels, and maybe a fancier one for special rewards.</p>
 </div>
-<script src="chest.js?v=2"></script>
+<script src="chest.js?v=3"></script>
 <script>
 const c = document.getElementById('c'), g = c.getContext('2d');
 const W = 960, H = 544;
-let look = 'royal', anim = 'burst', ch;
+let look = 'captain', anim = 'burst', ch;
 function reset() { ch = Chest.make({ look, anim, total: 150, x: W / 2, y: 345, counter: { x: W / 2 - 108, y: 220 } }); }
 function buttons(el, map, get, set) {
   el.innerHTML = Object.entries(map).map(([k, name]) => `<button data-k="${k}" aria-pressed="${k === get()}">${name}</button>`).join('');
