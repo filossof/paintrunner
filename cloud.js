@@ -9,13 +9,15 @@
      pr_levels/{levelKey}/pr_scores/{uid}  one row per player per level: their bests
      pr_levels/{levelKey}/pr_ghosts/{uid}  each player's fastest recorded run of the level (ghost.js)
      pr_daily/{day}/pr_scores/{uid}        the Daily Chase: each player's best time that day
+     pr_names/{lowercase nickname}         who owns each nickname (so no two players share one)
      pr_runs/{autoId}                      every finished or abandoned attempt (admin stats)
      pr_sessions/{id}                      one per visit: how long the player actually played (admin stats)
 
    Guests (not signed in) get an anonymous Firebase account, so their runs and visits still
-   reach the stats dashboard. They count as signed out everywhere else (`user` is null): no
-   leaderboards, no profile. Signing in with Google links that guest account to Google, so it
-   keeps its history; if the Google account already exists, it simply signs in to that one.
+   reach the stats dashboard. A guest who picks a nickname (pr_names/{lowercase name} -> uid, one
+   owner each) is on the leaderboards under it, just like a Google account (`player`). Signing in
+   with Google links the guest account to Google, so it keeps its history and nickname; if the
+   Google account already exists, it simply signs in to that one.
 
    The game never depends on this: if Firebase can't be reached, or the rules
    haven't been published yet, everything keeps working locally.
@@ -24,6 +26,7 @@
 const Cloud = (() => {
   let auth = null, db = null, user = null, available = false;
   let account = null;   // whoever Firebase has signed in, guests included (user = Google accounts only)
+  let nick = null;      // this account's nickname on the leaderboards, if it picked one
   let tracking = false; // the game turns this on (trackVisits); the stats page doesn't, so it never makes guests
   const listeners = new Set();
 
@@ -92,7 +95,10 @@ const Cloud = (() => {
   let lastSeconds = 0;   // play time so far this visit, as last reported by the game
   let lastReport = null; // and the rest of that report (levels played, the last one)
   const guestName = (u) => `Guest ${u.uid.slice(0, 4)}`;
-  const nameOf = () => (user ? publicName(user) : guestName(account));
+  // Who you are on the leaderboards: a Google account, or a guest with a nickname (else null).
+  const me = () => (account && (user || nick)
+    ? { uid: account.uid, name: nick || publicName(user), photo: user ? user.photoURL || '' : '', guest: !user } : null);
+  const nameOf = () => (me() ? me().name : guestName(account));
 
   const emit = () => listeners.forEach((fn) => { try { fn(user); } catch (e) { console.error(e); } });
 
@@ -127,7 +133,38 @@ const Cloud = (() => {
       }, { merge: true }).catch((e) => console.warn('pr_private', e.code || e));
     }
     if (tracking && account && session.uid !== account.uid) startSession();   // a visit: logged even before any play
-    if (user !== was || (user && was && user.uid !== was.uid)) emit();
+    const nickWas = nick;
+    if (account && account.uid !== nickFor) loadNick();
+    if (!account) nick = null;
+    if (user !== was || (user && was && user.uid !== was.uid) || nick !== nickWas) emit();
+  }
+
+  // ---- nicknames ----
+  // Letters, digits and _, 3 to 16 long; no rude words (kids play too). Unique, ignoring case.
+  const NICK_RE = /^[A-Za-z0-9_]{3,16}$/;
+  const RUDE = ['fuck', 'shit', 'bitch', 'cunt', 'dick', 'cock', 'pussy', 'penis', 'vagina', 'sex', 'porn', 'nigg', 'fag', 'retard', 'rape', 'nazi', 'hitler', 'whore', 'slut', 'asshole', 'bastard', 'kill', 'kys', 'zona', 'sharmut', 'kus', 'admin', 'moderator', 'paintrunner', 'filossof'];
+  const unleet = (n) => n.toLowerCase().replace(/0/g, 'o').replace(/[1!]/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/_/g, '');
+  function nickProblem(n) {
+    if (!NICK_RE.test(n)) return n.length < 3 ? 'At least 3 characters' : n.length > 16 ? 'At most 16 characters' : 'Only English letters, digits and _';
+    const u = unleet(n);
+    if (RUDE.some((w) => u.includes(w)) || /^guest/.test(u)) return 'Please pick another name';
+    return null;
+  }
+  const names = () => db.collection('pr_names');
+  let nickFor = null;   // the account whose nickname we have (or are fetching)
+  function loadNick() {
+    const uid = account.uid;
+    nickFor = uid;
+    try { nick = localStorage.getItem('paintRunner.nick.' + uid) || null; } catch (e) { nick = null; }
+    names().where('uid', '==', uid).limit(1).get().then((snap) => {
+      if (nickFor !== uid) return;
+      const n = snap.empty ? null : snap.docs[0].data().name;
+      keepNick(uid, n);
+    }).catch((e) => console.warn('nick', e.code || e));
+  }
+  function keepNick(uid, n) {
+    try { if (n) localStorage.setItem('paintRunner.nick.' + uid, n); else localStorage.removeItem('paintRunner.nick.' + uid); } catch (e) { /* ignore */ }
+    if (n !== nick) { nick = n; emit(); }
   }
 
   // One session per visit and account. Switching accounts part-way starts a new one from that moment.
@@ -194,9 +231,9 @@ const Cloud = (() => {
     const since = (value, oldValue, oldAt) =>
       value === undefined ? undefined : oldValue === undefined || value < oldValue ? now : (oldAt || 0);
     return dropUndefined({
-      uid: user.uid,
-      name: publicName(user),
-      photo: user.photoURL || '',
+      uid: me().uid,
+      name: me().name,
+      photo: me().photo,
       level: r.level,
       levelIdx: r.levelIdx,
       bestTime,
@@ -226,12 +263,60 @@ const Cloud = (() => {
   }
 
   async function rankIn(name, field) {
-    const mine = await scores(name).doc(user.uid).get();
+    const mine = await scores(name).doc(me().uid).get();
     const v = mine.exists ? mine.data()[field] : undefined;
     if (v === undefined) return null;
     const snap = await scores(name).orderBy(field).limit(100).get();
     const better = snap.docs.filter((d) => d.data()[field] < v).length;
     return better >= 100 ? null : better + 1;
+  }
+
+  // A new nickname: your rows on every board (and your profile) show it from now on.
+  async function renameRows(n) {
+    const uid = account.uid, refs = [db.collection('pr_players').doc(uid)];
+    if (typeof LEVELS !== 'undefined') for (const l of LEVELS) refs.push(scores(l.name).doc(uid), ghosts(l.name).doc(uid));
+    if (typeof Daily !== 'undefined') refs.push(db.collection('pr_daily').doc(Daily.key()).collection('pr_scores').doc(uid));
+    await Promise.all(refs.map(async (ref) => {
+      const d = await ref.get();
+      if (d.exists && d.data().name !== n) await ref.update({ name: n });
+    }));
+  }
+
+  // ---- leaderboards, 10 rows at a time ----
+  // Rows are read a page at a time, only when asked for, up to the top 100. Ranks stay right because
+  // every better row came on an earlier page. Equal values share a place ("1, 1, 3"); within a tie,
+  // whoever set it first is listed first.
+  const PAGE = 10, TOP = 100;
+  function pager(query, value, better, atField) {
+    const rows = [];
+    let last = null, done = false, loading = null;
+    async function more() {
+      let q = query.limit(PAGE);
+      if (last) q = q.startAfter(last);
+      const snap = await q.get();
+      for (const d of snap.docs) rows.push({ uid: d.id, ...d.data() });
+      if (snap.docs.length) last = snap.docs[snap.docs.length - 1];
+      if (snap.docs.length < PAGE || rows.length >= TOP) done = true;
+      rows.sort((a, b) => (better(value(a), value(b)) ? -1 : better(value(b), value(a)) ? 1 : (a[atField] || 0) - (b[atField] || 0)));
+      for (const r of rows) r.rank = 1 + rows.filter((o) => better(value(o), value(r))).length;
+    }
+    async function ensure(n) {
+      await pending;
+      while (!done && rows.length < n) {
+        loading = loading || more().finally(() => { loading = null; });
+        await loading;
+      }
+    }
+    return {
+      /* page p (0 = the top 10): { rows, from, hasPrev, hasNext } */
+      async page(p) {
+        await ensure((p + 1) * PAGE + 1);   // one more row tells whether there's a next page
+        const from = p * PAGE;
+        return { rows: rows.slice(from, Math.min(from + PAGE, TOP)), from, hasPrev: p > 0, hasNext: rows.length > from + PAGE && from + PAGE < TOP };
+      },
+      /* where this player is in the top 100 (0-based), or -1 */
+      async find(uid) { await ensure(TOP); return rows.slice(0, TOP).findIndex((r) => r.uid === uid); },
+    };
   }
 
   // A guest signing in keeps the same account (and its history), now with Google attached.
@@ -255,6 +340,30 @@ const Cloud = (() => {
     get available() { return available; },
     get source() { return { source, firstSource }; },
     get user() { return user; },
+    /* You on the leaderboards: { uid, name, photo, guest } for a Google account or a guest with a nickname, else null. */
+    get player() { return me(); },
+    get nick() { return nick; },
+    nickProblem,
+    /* Is this nickname free (or already yours)? */
+    async nickFree(n) {
+      const d = await names().doc(n.toLowerCase()).get();
+      return !d.exists || (account && d.data().uid === account.uid);
+    },
+    /* Takes a nickname (and lets go of your old one). Your rows on the boards are renamed. */
+    async setNick(n) {
+      const problem = nickProblem(n);
+      if (problem) throw Object.assign(new Error(problem), { code: 'bad-name' });
+      if (!account) throw Object.assign(new Error('offline'), { code: 'offline' });
+      const key = n.toLowerCase(), uid = account.uid, old = nick;
+      const ref = names().doc(key), d = await ref.get();
+      if (d.exists && d.data().uid !== uid) throw Object.assign(new Error('taken'), { code: 'taken' });
+      if (!d.exists) await ref.set({ uid, name: n, at: Date.now() });
+      else if (d.data().name !== n) { await ref.delete(); await ref.set({ uid, name: n, at: Date.now() }); }   // a new capitalization
+      if (old && old.toLowerCase() !== key) await names().doc(old.toLowerCase()).delete().catch(() => { });
+      keepNick(uid, n);
+      if (old) await track(renameRows(n));
+      return n;
+    },
     get isAdmin() { return !!(user && user.email === ADMIN_EMAIL && user.emailVerified); },
     publicName,
     levelKey,
@@ -343,12 +452,12 @@ const Cloud = (() => {
 
     /* Posts a completed run to the level's leaderboards and returns this player's ranks. */
     submitScore(r) {
-      if (!user) return Promise.resolve(null);
+      if (!me()) return Promise.resolve(null);
       return track(this._submitScore(r));
     },
 
     async _submitScore(r) {
-      const ref = scores(r.level).doc(user.uid);
+      const ref = scores(r.level).doc(me().uid);
       const before = await ref.get();
       const old = before.exists ? before.data() : null;
       const row = mergeScore(old, r, true);
@@ -368,12 +477,12 @@ const Cloud = (() => {
        local best is on the leaderboards. Returns the merged progress. */
     /* Merges local and cloud progress into the public profile (stars ranking). Returns the merged map. */
     saveProfile(local, levels) {
-      if (!user) return Promise.resolve(null);
+      if (!me()) return Promise.resolve(null);
       return track(this._saveProfile(local, levels));
     },
 
     async _saveProfile(local, levels) {
-      const ref = db.collection('pr_players').doc(user.uid);
+      const ref = db.collection('pr_players').doc(me().uid);
       const snap = await ref.get();
       const cloud = snap.exists ? snap.data() : {};
       const cp = cloud.progress || {};
@@ -391,8 +500,8 @@ const Cloud = (() => {
       // achievements: everything unlocked on any device, counters at their highest
       const ach = typeof Achievements !== 'undefined' ? Achievements.mergeInto(local.ach, cloud.ach) : (cloud.ach || { unlocked: {}, counts: {} });
       await ref.set({
-        name: publicName(user), photo: user.photoURL || '',
-        joinedAt: cloud.joinedAt || Date.parse(user.metadata.creationTime) || Date.now(),
+        name: me().name, photo: me().photo, nick: nick || '', google: !!user,
+        joinedAt: cloud.joinedAt || Date.parse(account.metadata.creationTime) || Date.now(),
         lastSeen: Date.now(),
         unlocked: Math.max(local.unlocked || 0, cloud.unlocked || 0),
         progress: merged, totalStars, levelsCleared: Object.keys(merged).length,
@@ -405,14 +514,14 @@ const Cloud = (() => {
     },
 
     async syncProgress(local, levels) {
-      if (!user) return null;
+      if (!me()) return null;
       const { merged, unlocked, wallet, ach } = await this.saveProfile(local, levels);
 
       // Backfill leaderboards with any local bests the cloud doesn't know about yet.
       await Promise.all(levels.map(async (l, i) => {
         const p = merged[levelKey(l.name)];
         if (!p) return;
-        const sref = scores(l.name).doc(user.uid);
+        const sref = scores(l.name).doc(me().uid);
         const s = await sref.get();
         const old = s.exists ? s.data() : null;
         const row = mergeScore(old, { level: l.name, levelIdx: i, time: p.t, stars: p.s, throws: p.th }, false);
@@ -431,14 +540,27 @@ const Cloud = (() => {
       return { progress, unlocked, wallet, ach };
     },
 
+    /* The boards, a page at a time (see pager): one level's fastest / perfect / fewest throws,
+       the star collectors, and one day's Daily. */
+    levelPager(name, field) { return pager(scores(name).orderBy(field), (r) => r[field], (a, b) => a < b, field + 'At'); },
+    starPager() { return pager(db.collection('pr_players').orderBy('totalStars', 'desc'), (r) => r.totalStars || 0, (a, b) => a > b, 'starsAt'); },
+    dailyPager(day) { return pager(db.collection('pr_daily').doc(day).collection('pr_scores').orderBy('time'), (r) => r.time, (a, b) => a < b, 'at'); },
+    /* Your own row on a level's boards (null if you have none). */
+    async myScore(name) {
+      if (!me()) return null;
+      await pending;
+      const s = await scores(name).doc(me().uid).get();
+      return s.exists ? s.data() : null;
+    },
+
     /* The three boards for one level. */
     async leaderboard(name, limit = 10) {
       await pending;
       const [fastest, perfect, efficient] = await Promise.all(
         ['bestTime', 'best3Time', 'fewestThrows'].map((f) => topOf(name, f, limit)));
       let me = null;
-      if (user) {
-        const s = await scores(name).doc(user.uid).get();
+      if (me()) {
+        const s = await scores(name).doc(me().uid).get();
         if (s.exists) me = s.data();
       }
       return { fastest, perfect, efficient, me };
@@ -447,13 +569,13 @@ const Cloud = (() => {
     /* Keeps this run as your ghost for the level if it's faster than the one you have there.
        (The database only accepts it after the run is on the leaderboard, never faster than your best.) */
     saveGhost(name, g) {
-      if (!user) return Promise.resolve(false);
+      if (!me()) return Promise.resolve(false);
       return track((async () => {
-        const ref = ghosts(name).doc(user.uid);
+        const ref = ghosts(name).doc(me().uid);
         const old = await ref.get();
         if (old.exists && old.data().time <= g.time) return false;
         await ref.set({
-          uid: user.uid, name: publicName(user), time: round3(g.time), data: g.data,
+          uid: me().uid, name: me().name, time: round3(g.time), data: g.data,
           char: g.char || 'blob', hat: g.hat || '', skin: g.skin || '', at: Date.now(),
         });
         return true;
@@ -469,20 +591,20 @@ const Cloud = (() => {
     },
     /* Your own ghost for a level, from your account (e.g. recorded on another device). */
     async myGhost(name) {
-      if (!user) return null;
-      const d = await ghosts(name).doc(user.uid).get();
+      if (!me()) return null;
+      const d = await ghosts(name).doc(me().uid).get();
       return d.exists ? d.data() : null;
     },
 
     /* The Daily Chase: keeps your best time today (and its recording, the ghost others race),
        returns your place on today's board. */
     async submitDaily(day, r) {
-      if (!user) return { rank: null };
-      const ref = db.collection('pr_daily').doc(day).collection('pr_scores').doc(user.uid);
+      if (!me()) return { rank: null };
+      const ref = db.collection('pr_daily').doc(day).collection('pr_scores').doc(me().uid);
       const old = await ref.get();
       const time = round3(r.time);
       if (!old.exists || time < old.data().time) {
-        const row = { uid: user.uid, name: publicName(user), photo: user.photoURL || '', time, stars: r.stars || 0, at: Date.now() };
+        const row = { uid: me().uid, name: me().name, photo: me().photo, time, stars: r.stars || 0, at: Date.now() };
         if (r.ghost) Object.assign(row, { data: r.ghost.data, char: r.ghost.char || 'blob', hat: r.ghost.hat || '', skin: r.ghost.skin || '' });
         await track(ref.set(row));
       }
@@ -502,7 +624,7 @@ const Cloud = (() => {
       await pending;
       const snap = await db.collection('pr_daily').doc(day).collection('pr_scores').orderBy('time').limit(limit + 10).get();
       const rows = snap.docs.map((d) => d.data()).sort((a, b) => a.time - b.time || a.at - b.at);
-      return { rows: withRanks(rows, (x) => x.time, (a, b) => a < b).slice(0, limit), me: user ? rows.find((x) => x.uid === user.uid) || null : null };
+      return { rows: withRanks(rows, (x) => x.time, (a, b) => a < b).slice(0, limit), me: me() ? rows.find((x) => x.uid === me().uid) || null : null };
     },
 
     /* Overall ranking by stars collected. */

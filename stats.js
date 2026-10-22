@@ -213,7 +213,8 @@
 
     // ---- per player ----
     const byUid = {};
-    for (const p of players) byUid[p.uid] = { ...p, member: true, runs: [], sessions: [] };
+    // signed in = with Google (an email, or a profile saved as Google); guests with a nickname have a profile too
+    for (const p of players) byUid[p.uid] = { ...p, member: !!(p.email || p.google), runs: [], sessions: [] };
     for (const r of runs) (byUid[r.uid] = byUid[r.uid] || { uid: r.uid, name: r.name, runs: [], sessions: [] }).runs.push(r);
     for (const s of sessions) (byUid[s.uid] = byUid[s.uid] || { uid: s.uid, name: s.name, runs: [], sessions: [] }).sessions.push(s);
     const people = Object.values(byUid).map((p) => {
@@ -269,6 +270,7 @@
         ${kpi(num(active.length), 'Active players', `${num(activeMembers)} signed in · ${num(activeGuests)} guests`)}
         ${kpi(pct(activeMembers, active.length), 'Sign-in rate', 'active players signed in with Google')}
         ${kpi(num(converted.length), 'Guests who signed in', 'played as a guest first')}
+        ${kpi(num(people.filter((p) => p.guest && p.nick && p.visitedInRange).length), 'Guests with a nickname', 'on the leaderboards without Google')}
         ${kpi(num(sum(sessR, (s) => (s.funnel && s.funnel.claimShown) || 0)), 'Sign-in prompts shown', `${num(sum(sessR, (s) => (s.funnel && (s.funnel.claimClick || s.funnel.signinClick)) || 0))} clicks · ${num(sessR.filter((s) => s.funnel && s.funnel.signedIn).length)} signed in`)}
         ${kpi(pct(sessR.filter((s) => s.host === 'itch').length, sessR.filter((s) => s.host).length), 'Visits from itch.io', 'of visits that recorded where they came from')}
         ${kpi(num(newcomers.length), 'New players')}
@@ -335,7 +337,7 @@
 
     // ---- players ----
     const playerCols = [
-      { key: 'name', label: 'Player', fmt: (p) => `${avatar(p.photo)} ${p.guest ? `<span class="muted">${esc(p.name)}</span> <span class="tag">guest</span>` : esc(p.name)}${p.wasGuest ? ' <span class="tag">was a guest</span>' : ''}`, sortVal: (p) => (p.name || '').toLowerCase() },
+      { key: 'name', label: 'Player', fmt: (p) => `${avatar(p.photo)} ${p.guest ? `<span class="muted">${esc(p.name)}</span> <span class="tag">${p.nick ? 'nickname' : 'guest'}</span>` : esc(p.name)}${p.wasGuest ? ' <span class="tag">was a guest</span>' : ''}${!p.guest && p.nick ? ` <span class="tag">${esc(p.nick)}</span>` : ''}`, sortVal: (p) => (p.name || '').toLowerCase() },
       { key: 'email', label: 'Email', fmt: (p) => `<span class="muted">${esc(p.email || '—')}</span>` },
       { key: 'total', label: 'Total time', num: true, fmt: (p) => dur(p.total) },
       { key: 'today', label: 'Today', num: true, fmt: (p) => dur(p.today) },

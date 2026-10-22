@@ -678,12 +678,13 @@
     if (ghost) Ghost.keepMine(key, ghost);
     postResult(game.lastResult, true, ghost);
     game.mode = 'complete';
+    askNickname();
     // the first level you clear: would you like to race the #1 ghost?
     if (!Ghost.chosen() && typeof UI !== 'undefined') {
       // once the result has sunk in and any achievement cards have gone
       const ask = () => {
         if (game.mode !== 'complete' || Ghost.chosen()) return;
-        if (UI.modalOpen || achShowing || achQueue.length) return setTimeout(ask, 500);
+        if (UI.modalOpen || achShowing || achQueue.length || nickAsking) return setTimeout(ask, 500);
         UI.openGhostIntro();
       };
       setTimeout(ask, 1800);
@@ -698,9 +699,10 @@
     const lv = levelDef(game.levelIdx);
     const run = { level: lv.daily ? 'Daily Chase' : lv.name, levelIdx: game.levelIdx, completed, time: result.time, stars: result.stars, throws: result.throws, deaths: result.deaths, played: game.world ? game.world.playFrames / 60 : result.time };
     Cloud.logRun(run).catch((e) => console.warn('logRun', e.code || e));   // guests too, for the stats
-    if (!Cloud.user) {
+    if (completed) { result.run = run; result.ghost = ghost; }    // (kept for claimResult)
+    if (!Cloud.player) {
       result.cloud = lv.daily ? 'signin-daily' : 'signin';
-      if (completed) {                                         // where your best would land: "sign in to claim it"
+      if (completed) {                                         // where your best would land: "pick a nickname to claim it"
         const dailyBest = store.get('dailyBest', {});
         const best = Math.min(result.time, lv.daily ? (dailyBest.day === lv.daily ? dailyBest.time : Infinity) : (game.best[lv.name] ?? Infinity));
         Cloud.wouldRank(lv.name, best, lv.daily).then((c) => { result.claim = { ...c, time: best }; }).catch((e) => console.warn('wouldRank', e.code || e));
@@ -826,7 +828,7 @@
     if (Ghost.mode === 'off') return;
     if (Ghost.mode === 'mine' || !online()) {
       if (mine() || Ghost.mode !== 'mine') return;
-      if (online() && Cloud.user) {
+      if (online() && Cloud.player) {
         Cloud.myGhost(name).then((g) => {
           if (!g || req !== ghostReq) return;
           Ghost.keepMine(name, g);
@@ -839,7 +841,7 @@
       if (req !== ghostReq || game.mode !== 'play') return;
       const g = r.ghost;
       if (g) {
-        const who = Cloud.user && g.uid === Cloud.user.uid ? 'You' : g.name;
+        const who = Cloud.player && g.uid === Cloud.player.uid ? 'You' : g.name;
         const isRecord = r.recordTime === null || g.time <= r.recordTime + 0.0005;
         Ghost.use(g, isRecord ? `#1 ${who}` : `Fastest ghost · ${who}`);
       } else if (mine()) {
@@ -863,14 +865,14 @@
   // catch up on runs recorded but never uploaded, once per sign-in, one at a time
   let ghostsSyncedFor = null;
   async function uploadPendingGhosts() {
-    if (!online() || !Cloud.user || ghostsSyncedFor === Cloud.user.uid) return;
-    ghostsSyncedFor = Cloud.user.uid;
+    if (!online() || !Cloud.player || ghostsSyncedFor === Cloud.player.uid) return;
+    ghostsSyncedFor = Cloud.player.uid;
     for (const [name, g] of Ghost.pending(LEVELS.map((l) => l.name))) {
-      if (!Cloud.user) return;
+      if (!Cloud.player) return;
       await uploadGhost(name, g);
     }
   }
-  if (online()) Cloud.onChange((u) => { if (u) setTimeout(uploadPendingGhosts, 4000); });   // after the progress sync
+  if (online()) Cloud.onChange(() => { if (Cloud.player) setTimeout(uploadPendingGhosts, 4000); });   // after the progress sync
 
   // the Daily: today's fastest run (or your own best today)
   function loadDailyGhost() {
@@ -882,7 +884,7 @@
     Cloud.dailyGhost(day).then((r) => {
       if (req !== ghostReq || game.mode !== 'play') return;
       if (r) {
-        const who = Cloud.user && r.ghost.uid === Cloud.user.uid ? 'You' : r.ghost.name;
+        const who = Cloud.player && r.ghost.uid === Cloud.player.uid ? 'You' : r.ghost.name;
         Ghost.use(r.ghost, r.isRecord ? `#1 today · ${who}` : `Fastest ghost · ${who}`);
       } else if (!mine()) showToast('👻 No ghost yet today. Set the time to beat!', 2200);
     }).catch(() => { if (req === ghostReq) mine(); });
@@ -989,7 +991,7 @@
     saveWallet();
     showAchievement(a, reward, all);
     clearTimeout(achSaveTimer);
-    achSaveTimer = setTimeout(() => { if (online() && Cloud.user) Cloud.saveProfile(localProgress(), LEVELS).catch(() => { }); }, 1500);
+    achSaveTimer = setTimeout(() => { if (online() && Cloud.player) Cloud.saveProfile(localProgress(), LEVELS).catch(() => { }); }, 1500);
   };
   // trophy cards slide in at the top; several at once stack, and a big batch becomes one summary card
   let achQueue = [], achShowing = 0;
@@ -1862,15 +1864,14 @@
   const GIFT_DROPS = 500;
   let claimRect = null;
   function claimText(r) {
-    const c = r.claim, gift = game.wallet.signinGift ? '' : `  ·  🎁 +${GIFT_DROPS} Drops`;
-    const where = r.daily ? "today's board" : 'the board';
-    if (c && c.rank) return `${['🥇', '🥈', '🥉'][c.rank - 1] || '🏆'} ${c.time.toFixed(3)}s would be #${c.rank} on ${where}!  Sign in to claim it${gift}`;
-    if (c && c.gap) return `⏱ ${c.gap.toFixed(2)}s from the top 10.  Sign in to join the leaderboard${gift}`;
-    return `🏆 Sign in to join the leaderboards${gift}`;
+    const c = r.claim, where = r.daily ? "today's board" : 'the board';
+    if (c && c.rank) return `${['🥇', '🥈', '🥉'][c.rank - 1] || '🏆'} ${c.time.toFixed(3)}s would be #${c.rank} on ${where}!  ✏️ Pick a nickname to claim it`;
+    if (c && c.gap) return `⏱ ${c.gap.toFixed(2)}s from the top 10.  ✏️ Pick a nickname to join the board`;
+    return '🏆 ✏️ Pick a nickname to join the leaderboards';
   }
   function drawClaim(r, y) {
     claimRect = null;
-    if (!online() || Cloud.user || (r.cloud !== 'signin' && r.cloud !== 'signin-daily')) return;
+    if (!online() || Cloud.player || (r.cloud !== 'signin' && r.cloud !== 'signin-daily')) return;
     if (!r.claimNoted) { r.claimNoted = true; Cloud.note('claimShown'); }
     const str = claimText(r), size = 17;
     ctx.font = `900 ${size}px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif`;
@@ -1885,21 +1886,56 @@
   function claimSpot() {
     if (!claimRect || game.mode !== 'complete' || typeof UI === 'undefined') return false;
     Cloud.note('claimClick');
-    UI.signIn('claim');
+    const r = game.lastResult;
+    UI.openNickname({ claim: r.claim, onDone: () => claimResult(r) });
     return true;
   }
-
-  // ---------- after signing in ----------
-  // Today's Daily time set as a guest goes on today's board, and a first sign-in opens the gift chest:
-  // Paint Drops and the Captain's Hat.
-  function afterSignIn() {
-    if (!Cloud.user) return;
-    const best = store.get('dailyBest', {}), day = Daily.key();
-    if (best.day === day) {
-      Cloud.submitDaily(day, { time: best.time, stars: dailyFlags() & 2 ? 3 : 0, ghost: Ghost.loadMine('daily:' + day) })
-        .catch((e) => console.warn('claimDaily', e.code || e));
+  // A guest just picked a nickname on the level-complete screen: this run goes on the board right
+  // away (their other bests go up with the progress sync, afterJoin).
+  function claimResult(r) {
+    if (!r || !Cloud.player || game.lastResult !== r || !r.run) return;
+    r.cloud = 'saving';
+    if (r.daily) {
+      Cloud.submitDaily(r.daily, { time: r.time, stars: r.stars, ghost: r.ghost })
+        .then((x) => { r.cloud = { daily: x.rank }; dailyPodium(x.rank); })
+        .catch((e) => { console.warn('claim', e.code || e); r.cloud = 'error'; });
+      return;
     }
-    if (!game.wallet.signinGift) giveSigninGift();
+    Cloud.submitScore(r.run)
+      .then((ranks) => { r.cloud = ranks; if (r.ghost) uploadGhost(r.run.level, r.ghost); })
+      .catch((e) => { console.warn('claim', e.code || e); r.cloud = 'error'; });
+  }
+
+  // A guest's first cleared level (once ever): pick a nickname and join the leaderboards. It waits
+  // for the chest to be opened (the drops, then the question), and comes before the ghost question.
+  let nickAsking = false;
+  function askNickname() {
+    if (!online() || Cloud.player || store.get('nickAsked', false) || typeof UI === 'undefined') return;
+    const r = game.lastResult;
+    nickAsking = true;
+    const ask = () => {
+      if (game.mode !== 'complete' || game.lastResult !== r || Cloud.player) { nickAsking = false; return; }
+      if (UI.modalOpen || achShowing || achQueue.length || (game.chest && !game.chest.done)) return setTimeout(ask, 400);
+      store.set('nickAsked', true);
+      UI.openNickname({ auto: true, claim: r.claim, onDone: () => claimResult(r), onClose: () => { nickAsking = false; } });
+    };
+    setTimeout(ask, 900);
+  }
+
+  // ---------- after joining the leaderboards (a nickname, or signing in) ----------
+  // Today's Daily time set as a guest goes on today's board, and a first sign-in with Google opens
+  // the gift chest: Paint Drops and the Captain's Hat.
+  function afterSignIn() {
+    if (!Cloud.player) return;
+    claimDaily();
+    if (Cloud.user && !game.wallet.signinGift) giveSigninGift();
+  }
+  // your best time today (set before you were on the boards) goes on today's board
+  function claimDaily() {
+    const best = store.get('dailyBest', {}), day = Daily.key();
+    if (!Cloud.player || best.day !== day) return Promise.resolve();
+    return Cloud.submitDaily(day, { time: best.time, stars: dailyFlags() & 2 ? 3 : 0, ghost: Ghost.loadMine('daily:' + day) })
+      .catch((e) => console.warn('claimDaily', e.code || e));
   }
   function giveSigninGift() {
     const wl = game.wallet;
@@ -2074,7 +2110,7 @@
     game.wallet.equippedAt = Date.now();
     saveWallet();
     achCheck();
-    if (online() && Cloud.user) Cloud.saveProfile(localProgress(), LEVELS).catch(() => { });
+    if (online() && Cloud.player) Cloud.saveProfile(localProgress(), LEVELS).catch(() => { });
     return true;
   }
 
@@ -2241,6 +2277,7 @@
       localProgress,
       applyProgress,
       afterSignIn,
+      claimDaily,
       giftPending: () => !game.wallet.signinGift,
       resetProgress,
       achievements: () => { achCheck(); return Achievements.list(); },

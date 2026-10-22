@@ -624,6 +624,24 @@ body.touch .set-sec + .set-sec { margin-top: 10px; padding-top: 10px; }
 .daily-board li.me { border-color: var(--gold); background: #fff6d6; }
 .daily-board li.guest { background: transparent; border: 1.5px dashed rgba(0,0,0,0.3); color: var(--ink-2, #5a5862); }
 .daily-board li.guest .btn { margin-left: 8px; }
+/* leaderboards: pages of 10 */
+.board .pager, .daily-board .pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 0 2px; flex-wrap: wrap; }
+.board .pager:empty, .daily-board .pager:empty, .board .mine:empty { display: none; }
+.board .pager .range, .daily-board .pager .range { font: 700 13px var(--font); color: var(--ink-2); min-width: 54px; text-align: center; }
+.daily-claim { margin: 0 0 8px; padding: 8px 12px; border-radius: 10px; background: #fff6d6; border: 1.5px solid var(--gold); }
+/* nickname */
+.avatar.initial-av { display: inline-grid; place-items: center; color: #fff; font: 900 13px var(--font); }
+.nick-form { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; }
+.nick-form input { flex: 1; min-width: 0; font: 800 20px var(--font); padding: 10px 14px; border: 2.5px solid var(--ink); border-radius: 12px; background: #fff; color: var(--ink); }
+.nick-form input:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.nick-status { min-height: 1.4em; margin: 2px 0 10px; font: 700 14px var(--font); color: var(--ink-2); }
+.nick-status.ok { color: #138a43; }
+.nick-status.bad { color: #c4202f; }
+.nick-claim { margin: 0 0 8px; padding: 10px 14px; border-radius: 12px; background: #fff6d6; border: 2px solid var(--gold); font-size: 16px; }
+.nick-or { color: var(--ink-2); font-size: 14px; }
+.nick-later { text-align: right; margin: 6px 0 0; }
+.nick-btn span { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+.account-menu .note { margin: 0; font-size: 12px; color: var(--ink-2); }
 .gift-badge { margin-left: 8px; padding: 2px 7px; border-radius: 999px; background: #ffd166; color: #1c1c1f; font-size: 12px; font-weight: 800; }
 .daily-board .rk { width: 30px; text-align: center; font: 900 16px var(--font); }
 .daily-board .nm { flex: 1; font-weight: 700; }

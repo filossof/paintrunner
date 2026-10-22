@@ -25,17 +25,30 @@ const UI = (() => {
   function render() {
     overlay.hidden = mode === 'play' || !Cloud.available;
     if (overlay.hidden) return;
-    const u = Cloud.user;
-    // signed in: just your picture; tapping it opens a small menu with Sign out
+    const u = Cloud.user, pl = Cloud.player;
+    const gift = api.giftPending && api.giftPending() ? ' <b>🎁 +500</b>' : '';
+    // signed in: your picture; a guest with a nickname: the nickname. Either opens a small menu.
+    // Not on the leaderboards yet: a button to pick a nickname (Google sign-in is offered in there too).
     const right = u
       ? `<div class="account">
-          <button class="avatar-btn" data-act="account" aria-haspopup="true" aria-expanded="false" aria-label="${esc(u.displayName || 'Account')}" title="${esc(u.displayName || '')}">${u.photoURL ? avatar(u.photoURL) : `<span class="initial">${esc((u.displayName || u.email || '?')[0].toUpperCase())}</span>`}</button>
+          <button class="avatar-btn" data-act="account" aria-haspopup="true" aria-expanded="false" aria-label="${esc(pl.name)}" title="${esc(pl.name)}">${u.photoURL ? avatar(u.photoURL) : `<span class="initial">${esc((pl.name || '?')[0].toUpperCase())}</span>`}</button>
           <div class="account-menu" hidden>
-            <div class="who"><strong>${esc(u.displayName || 'Painter')}</strong><small>${esc(u.email || '')}</small></div>
+            <div class="who"><strong>${esc(pl.name)}</strong><small>${esc(u.email || '')}</small></div>
+            <button class="btn small" data-act="nick">✏️ ${Cloud.nick ? 'Change nickname' : 'Pick a nickname'}</button>
             <button class="btn small" data-act="signout">Sign out</button>
           </div>
         </div>`
-      : `<button class="btn" data-act="signin">${GOOGLE_G}<span>Sign in with Google</span>${api.giftPending && api.giftPending() ? '<span class="gift-badge">🎁 +500</span>' : ''}</button>`;
+      : pl
+        ? `<div class="account">
+          <button class="btn nick-btn" data-act="account" aria-haspopup="true" aria-expanded="false">👤 <span>${esc(pl.name)}</span></button>
+          <div class="account-menu" hidden>
+            <div class="who"><strong>${esc(pl.name)}</strong><small>Your name on the leaderboards</small></div>
+            <button class="btn small" data-act="nick">✏️ Change nickname</button>
+            <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google${gift}</button>
+            <small class="note">Keeps your name and progress safe on every device.</small>
+          </div>
+        </div>`
+        : `<button class="btn" data-act="join">✏️ <span>Pick a nickname</span></button>`;
     // the Daily: pulses with NEW until today's is done
     const dailyDone = api.daily && api.daily().flags & 1;
     const left = `<button class="btn daily${dailyDone ? '' : ' fresh'}" data-act="daily">📅 Daily${dailyDone ? ' ✓' : ' <b class="new-badge">NEW</b>'}</button>` +
@@ -55,7 +68,8 @@ const UI = (() => {
     // after a mouse click, don't leave the keyboard on the button: Enter or Space (jump!) would press
     // it again, e.g. leaving full screen. Blurring keeps the keyboard inside the game.
     if (btn && e.detail > 0) btn.blur();
-    if (act === 'signin') signIn();
+    if (act === 'signin') { setAccountMenu(false); signIn(); }
+    if (act === 'join' || act === 'nick') { setAccountMenu(false); openNickname({}); }
     if (act === 'account') { setAccountMenu(overlay.querySelector('.account-menu').hidden); return; }
     if (act === 'signout') {
       setAccountMenu(false);
@@ -74,7 +88,7 @@ const UI = (() => {
   });
   // the little account menu under your picture: closes on any press outside it
   function setAccountMenu(open) {
-    const m = overlay.querySelector('.account-menu'), b = overlay.querySelector('.avatar-btn');
+    const m = overlay.querySelector('.account-menu'), b = overlay.querySelector('[data-act="account"]');
     if (!m) return;
     m.hidden = !open;
     b.setAttribute('aria-expanded', String(open));
@@ -92,6 +106,7 @@ const UI = (() => {
   async function signIn(via) {
     try {
       await Cloud.signIn(typeof via === 'string' ? via : 'menu');
+      await Cloud.ready;
     } catch (e) {
       console.error(e);
       if (e.code === 'embedded') api.toast('Sign-in is blocked on this page. Play at filossof.github.io/paintrunner to sign in.', 6000);
@@ -103,7 +118,7 @@ const UI = (() => {
   async function sync() {
     try {
       const merged = await Cloud.syncProgress(api.localProgress(), LEVELS);
-      if (merged) { api.applyProgress(merged); api.toast('☁ Progress synced'); }
+      if (merged) { api.applyProgress(merged); if (Cloud.user) api.toast('☁ Progress synced'); }
       if (merged && api.afterSignIn) api.afterSignIn();   // today's Daily time, and the sign-in gift
     } catch (e) {
       console.warn('sync failed', e);
@@ -149,16 +164,100 @@ const UI = (() => {
       if (t.dataset.act === 'prev') { levelIdx = (levelIdx + LEVELS.length - 1) % LEVELS.length; load(); }
       if (t.dataset.act === 'next') { levelIdx = (levelIdx + 1) % LEVELS.length; load(); }
       if (t.dataset.act === 'signin') signIn();
+      if (t.dataset.act === 'join') { const at = levelIdx, v = view; openNickname({ onDone: () => setTimeout(() => { view = v; openLeaderboard(at); }, 1200) }); }
     });
     modal.querySelector('select').addEventListener('change', (e) => { levelIdx = Number(e.target.value); load(); });
     modal.querySelector('.close').focus();
     load();
   }
 
+  let onModalClose = null;   // called once when the current window closes (openNickname)
   function close() {
     if (modal) modal.remove();
     modal = null;
     cancelAnimationFrame(charAnim);
+    const f = onModalClose; onModalClose = null;
+    if (f) f();
+  }
+
+  // ---------- nickname ----------
+  // How you show up on the leaderboards: unique, checked as you type. Picking one posts your best
+  // times so far (the progress sync). Google sign-in is offered too: the same name, kept safe.
+  const NICK_A = ['Swift', 'Sneaky', 'Bouncy', 'Mighty', 'Tiny', 'Brave', 'Speedy', 'Inky', 'Splashy', 'Sticky', 'Jumpy', 'Lucky', 'Wild', 'Cosmic', 'Turbo'];
+  const NICK_B = ['Blob', 'Brush', 'Splat', 'Runner', 'Drop', 'Ninja', 'Painter', 'Comet', 'Bean', 'Rocket', 'Pixel', 'Dash', 'Frog', 'Fox', 'Panda'];
+  const randomNick = () => NICK_A[Math.floor(Math.random() * NICK_A.length)] + NICK_B[Math.floor(Math.random() * NICK_B.length)] + Math.floor(10 + Math.random() * 90);
+  function openNickname({ auto = false, claim = null, onDone = null, onClose = null } = {}) {
+    if (modal) close();
+    if (!Cloud.available) return api.toast('The leaderboards are offline right now.');
+    modal = document.createElement('div');
+    modal.className = 'modal-back';
+    onModalClose = onClose;
+    const cur = Cloud.nick || '';
+    const where = claim && claim.rank ? `<p class="nick-claim">🏆 Your <b>${claim.time.toFixed(3)}s</b> would be <b>#${claim.rank}</b>. Pick a name and the spot is yours!</p>` : '';
+    modal.innerHTML = `
+      <div class="modal nick" role="dialog" aria-modal="true" aria-labelledby="nick-title" style="max-width:520px">
+        <div class="modal-head">
+          <h2 id="nick-title">✏️ ${cur ? 'Change your nickname' : 'Pick your nickname'}</h2>
+          <button class="close" data-act="close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          ${where}
+          <p class="note">It's your name on the leaderboards${cur ? '' : '. Your best times so far go up right away'}. Letters, digits and _, 3 to 16 long.</p>
+          <form class="nick-form" autocomplete="off">
+            <input id="nick-in" maxlength="16" value="${esc(cur)}" placeholder="e.g. ${esc(randomNick())}" aria-label="Nickname" aria-describedby="nick-status" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <button class="btn small" type="button" data-act="dice" title="Suggest a name" aria-label="Suggest a name">🎲</button>
+            <button class="btn big" type="submit" disabled>Save</button>
+          </form>
+          <p class="nick-status" id="nick-status" aria-live="polite"></p>
+          ${Cloud.user ? '' : `<p class="nick-or">or <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google</button> to keep your name and progress safe on every device${api.giftPending() ? ' · <b>🎁 +500 Drops</b>' : ''}</p>`}
+          ${auto ? '<p class="nick-later"><button class="btn small" data-act="close">Later</button></p>' : ''}
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const input = modal.querySelector('#nick-in'), status = modal.querySelector('.nick-status'), save = modal.querySelector('[type="submit"]');
+    let checkId = 0, timer = 0;
+    const say = (msg, cls) => { status.textContent = msg; status.className = 'nick-status ' + (cls || ''); };
+    const check = () => {
+      const n = input.value.trim(), id = ++checkId;
+      save.disabled = true;
+      if (!n) return say('');
+      if (n === cur) return say('That\'s your name now.', 'ok');
+      const problem = Cloud.nickProblem(n);
+      if (problem) return say(problem, 'bad');
+      say('Checking…');
+      clearTimeout(timer);
+      timer = setTimeout(() => Cloud.nickFree(n).then((free) => {
+        if (id !== checkId) return;
+        if (free) { say(`✓ ${n} is free!`, 'ok'); save.disabled = false; } else say(`✗ ${n} is taken. Try another one.`, 'bad');
+      }).catch(() => { if (id === checkId) say('Could not check right now. Try again.', 'bad'); }), 350);
+    };
+    input.addEventListener('input', check);
+    modal.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const n = input.value.trim();
+      if (save.disabled) return;
+      save.disabled = true; say('Saving…');
+      try {
+        await Cloud.setNick(n);
+        Cloud.note('nickPicked', auto ? 'auto' : 'menu');
+        const done = onDone; onDone = null;
+        close();
+        api.toast(`🏁 You're on the leaderboards as ${n}!`, 3000);
+        if (done) done();
+      } catch (err) {
+        console.warn(err);
+        say(err.code === 'taken' ? `✗ ${n} was just taken. Try another one.` : err.code === 'bad-name' ? err.message
+          : err.code === 'permission-denied' ? 'Nicknames are not switched on yet (the database rules need publishing).' : 'Could not save. Check your connection and try again.', 'bad');
+        if (err.code !== 'taken') save.disabled = false;
+      }
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal || e.target.closest('[data-act="close"]')) return close();
+      if (e.target.closest('[data-act="dice"]')) { input.value = randomNick(); check(); input.focus(); }
+      if (e.target.closest('[data-act="signin"]')) { const done = onDone; onDone = null; close(); signIn('nickname').then(() => { if (done && Cloud.player) done(); }); }
+    });
+    input.focus();
+    if (cur) input.select();
   }
 
   // ---------- the Daily Chase ----------
@@ -219,27 +318,30 @@ const UI = (() => {
       if (e.target.closest('[data-act="play-daily"]')) { close(); api.playDaily(); }
     });
     modal.querySelector('.daily-play').focus();
-    // today's board
-    const board = modal.querySelector('.daily-board'), uid = Cloud.user && Cloud.user.uid;
+    // today's board, a page of 10 at a time
+    const board = modal.querySelector('.daily-board');
     if (!Cloud.available) { board.innerHTML = '<p class="note">The leaderboard is offline right now.</p>'; return; }
-    Cloud.dailyTop(d.day, 10).then(({ rows, me }) => {
-      if (!document.body.contains(board)) return;
-      const medal = (rank) => ['🥇', '🥈', '🥉'][rank - 1] || `${rank}.`;
-      board.innerHTML = rows.length ? `<ol>${rows.map((r) => `<li class="${r.uid === uid ? 'me' : ''}"><span class="rk">${medal(r.rank)}</span>${r.photo ? avatar(r.photo) : ''}<span class="nm">${esc(r.name)}</span><span class="tm">${r.time.toFixed(3)}s</span></li>`).join('')}</ol>`
-        : '<p class="note">Nobody has finished today\'s chase yet. Be the first!</p>';
-      if (!uid && d.best !== null) {
-        // a guest's time, where it would be: grayed out, with a button to claim it
-        const rank = 1 + rows.filter((x) => x.time < d.best).length;
-        const li = `<li class="guest"><span class="rk">${rank}.</span><span class="nm">You <small>(guest)</small></span><span class="tm">${d.best.toFixed(3)}s</span><button class="btn small" data-act="signin">Sign in to claim</button></li>`;
-        const ol = board.querySelector('ol');
-        if (!ol) board.innerHTML = `<ol>${li}</ol>`;
-        else if (rank <= rows.length) ol.children[rank - 1].insertAdjacentHTML('beforebegin', li);
-        else ol.insertAdjacentHTML('beforeend', li);
+    board.innerHTML = '<div class="claim"></div><div class="list"></div><div class="pager"></div>';
+    const medal = (rank) => ['🥇', '🥈', '🥉'][rank - 1] || `${rank}.`;
+    pagedBoard(board, Cloud.dailyPager(d.day),
+      (r) => `<span class="rk">${medal(r.rank)}</span>${face(r)}<span class="nm">${esc(r.name)}</span><span class="tm">${r.time.toFixed(3)}s</span>`,
+      "Nobody has finished today's chase yet. Be the first!");
+    // not on the boards yet: where your time today would be, and a nickname to claim it
+    if (!Cloud.player) {
+      const claim = board.querySelector('.claim'), btn = '<button class="btn small" data-act="join">✏️ Pick a nickname</button>';
+      claim.innerHTML = `<p class="note">Want your name up here? ${btn}</p>`;
+      if (d.best !== null) {
+        Cloud.wouldRank(null, d.best, d.day).then((c) => {
+          if (!document.body.contains(claim)) return;
+          claim.innerHTML = `<p class="daily-claim">Your <b>${d.best.toFixed(3)}s</b> ${c.rank ? `would be <b>#${c.rank}</b> today` : 'is off the top 20 so far'}. ${btn.replace('Pick a nickname', 'Pick a nickname to claim it')}</p>`;
+        }).catch(() => { });
       }
-      if (!uid) board.insertAdjacentHTML('beforeend', `<p class="note">${d.best !== null ? 'Sign in and your time goes on today\'s board.' : 'Want your name up here?'} <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google</button>${api.giftPending() ? ' <b>🎁 +500 Drops</b> for signing in' : ''}</p>`);
-      else if (me && !rows.some((r) => r.uid === uid)) board.insertAdjacentHTML('beforeend', `<p class="note">Your best today: ${me.time.toFixed(3)}s</p>`);
-    }).catch((e) => { if (document.body.contains(board)) board.innerHTML = `<p class="note">${friendlyError(e)}</p>`; });
-    board.addEventListener('click', (e) => { if (e.target.closest('[data-act="signin"]')) { Cloud.note('claimClick'); signIn('daily'); } });
+    }
+    board.addEventListener('click', (e) => {
+      if (!e.target.closest('[data-act="join"]')) return;
+      Cloud.note('claimClick');
+      openNickname({ claim: null, onDone: () => api.claimDaily().finally(() => setTimeout(openDaily, 300)) });
+    });
   }
 
   // ---------- achievements ----------
@@ -330,6 +432,11 @@ const UI = (() => {
               <span class="ctl-pic" aria-hidden="true">${c.pic}</span><b>${c.name}</b></button>`).join('')}</div>
           <p class="note">${scheme.text}</p>
         </section>` : ''}
+        ${Cloud.available ? `<section class="set-sec">
+          <h3>👤 Your name <small>on the leaderboards</small></h3>
+          <div class="set-switches"><b>${Cloud.player ? esc(Cloud.player.name) : '<span class="note">Not on the leaderboards yet</span>'}</b>
+            <button class="btn small" data-act="nick">✏️ ${Cloud.nick ? 'Change' : 'Pick a nickname'}</button></div>
+        </section>` : ''}
         <section class="set-sec">
           <h3>📖 Story</h3>
           <div class="set-switches">
@@ -354,6 +461,7 @@ const UI = (() => {
       if (e.target === modal || e.target.closest('[data-act="close"]')) return close();
       const st = e.target.closest('[data-story]');
       if (st) { close(); api.playStory(st.dataset.story); return; }
+      if (e.target.closest('[data-act="nick"]')) { openNickname({ onDone: () => setTimeout(openSettings, 300) }); return; }
       const t = e.target.closest('[data-ghost], [data-scheme], [data-switch], [data-act="full"]');
       if (!t) return;
       if (t.dataset.ghost) api.setGhostMode(t.dataset.ghost);
@@ -677,20 +785,49 @@ const UI = (() => {
     if (view === 'level' && e.key === 'ArrowRight') { levelIdx = (levelIdx + 1) % LEVELS.length; load(); }
   });
 
-  function board(title, swatch, subtitle, rows, value, mine, mineValue) {
-    const uid = Cloud.user && Cloud.user.uid;
-    const items = rows.length
-      ? `<ol>${rows.map((r, i) => `<li class="${r.uid === uid ? 'me' : ''}">
-            <span class="rank${r.rank === 1 ? ' first' : ''}">${r.rank}</span>${avatar(r.photo)}<span class="who">${esc(r.name)}</span><span class="val">${value(r)}</span>
-          </li>`).join('')}</ol>`
-      : '<div class="empty">No one yet. Be the first!</div>';
-    const showMine = mine && mineValue(mine) !== null && !rows.some((r) => r.uid === uid);
-    return `<section class="board">
+  // One board: a page of 10 at a time (the top 100), with ◀ ▶ and a jump to your own place.
+  const boardShell = (title, swatch, subtitle) => `<section class="board">
       <h3><span class="swatch" style="background:${swatch}"></span>${title}<small>${subtitle}</small></h3>
-      ${items}
-      ${showMine ? `<div class="mine">Your best: <b>${mineValue(mine)}</b></div>` : ''}
+      <div class="list"></div><div class="pager"></div><div class="mine"></div>
     </section>`;
+  // no picture (a nickname): a colored circle with the first letter
+  const AV_COLORS = ['#2f7bff', '#ff3b4e', '#1fc160', '#e8a400', '#9b5de5'];
+  const face = (r) => (r.photo ? avatar(r.photo)
+    : `<span class="avatar initial-av" style="background:${AV_COLORS[[...String(r.name || '?')].reduce((n, c) => n + c.charCodeAt(0), 0) % 5]}">${esc(String(r.name || '?')[0].toUpperCase())}</span>`);
+  const boardRow = (r, val, extra = '') => `<span class="rank${r.rank === 1 ? ' first' : ''}">${r.rank}</span>${face(r)}<span class="who">${esc(r.name)}${extra}</span><span class="val">${val}</span>`;
+  function pagedBoard(el, pager, rowHtml, empty = 'No one yet. Be the first!') {
+    const uid = Cloud.player && Cloud.player.uid, list = el.querySelector('.list'), nav = el.querySelector('.pager');
+    let p = 0;
+    const fail = (e) => { console.warn(e); if (document.body.contains(el)) list.innerHTML = `<div class="error">${esc(friendlyError(e))}</div>`; };
+    async function draw() {
+      const pg = await pager.page(p);
+      if (!document.body.contains(el)) return;
+      list.innerHTML = pg.rows.length
+        ? `<ol>${pg.rows.map((r) => `<li class="${r.uid === uid ? 'me' : ''}">${rowHtml(r)}</li>`).join('')}</ol>`
+        : `<div class="empty">${empty}</div>`;
+      const pages = pg.hasPrev || pg.hasNext
+        ? `<button class="btn small" data-pg="-1" ${pg.hasPrev ? '' : 'disabled'} aria-label="Previous 10">◀</button>
+           <span class="range">${pg.from + 1}–${pg.from + pg.rows.length}</span>
+           <button class="btn small" data-pg="1" ${pg.hasNext ? '' : 'disabled'} aria-label="Next 10">▶</button>` : '';
+      const mine = uid && (pg.hasPrev || pg.hasNext) && !pg.rows.some((r) => r.uid === uid) ? '<button class="btn small" data-pg="me">📍 My place</button>' : '';
+      nav.innerHTML = pages + mine;
+    }
+    el.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-pg]');
+      if (!b || b.disabled) return;
+      if (b.dataset.pg === 'me') {
+        b.disabled = true; b.textContent = 'Looking…';
+        const i = await pager.find(uid).catch(() => -1);
+        if (i < 0) { b.textContent = 'Not in the top 100 yet'; return; }
+        p = Math.floor(i / 10);
+      } else p = Math.max(0, p + Number(b.dataset.pg));
+      draw().catch(fail);
+    });
+    list.innerHTML = '<p class="note">Loading…</p>';
+    draw().catch(fail);
   }
+
+  const joinNote = () => (Cloud.player ? '' : '<p class="note join-note">Want your name up here? <button class="btn small" data-act="join">✏️ Pick a nickname</button></p>');
 
   async function load() {
     if (!modal) return;
@@ -698,43 +835,36 @@ const UI = (() => {
     modal.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.view === view)));
     modal.querySelector('.level-pick').style.visibility = view === 'level' ? 'visible' : 'hidden';
     modal.querySelector('select').value = String(levelIdx);
-    content.innerHTML = '<p class="note">Loading…</p>';
-    const signInNote = Cloud.user ? '' :
-      `<p class="note">Want your name up here? <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google</button>${api.giftPending() ? ' <b>🎁 +500 Drops</b> for signing in' : ''}</p>`;
-    const requested = `${view}:${levelIdx}`;
-    try {
-      if (view === 'level') {
-        const lv = LEVELS[levelIdx];
-        const lb = await Cloud.leaderboard(lv.name);
-        if (`${view}:${levelIdx}` !== requested || !modal) return;
-        content.innerHTML = `<div class="boards">
-            ${board('⚡ Fastest', 'var(--red)', 'any stars', lb.fastest, (r) => `${fmtTime(r.bestTime)} <span class="stars">${starsText(r.bestStars)}</span>`, lb.me, (m) => fmtTime(m.bestTime))}
-            ${board('★★★ Perfect run', 'var(--yellow)', 'all 3 cans', lb.perfect, (r) => fmtTime(r.best3Time), lb.me, (m) => (m.best3Time === undefined ? null : fmtTime(m.best3Time)))}
-            ${board('🎨 Fewest throws', 'var(--blue)', 'paint used', lb.efficient, (r) => `${r.fewestThrows} 🖌`, lb.me, (m) => (m.fewestThrows === undefined ? null : `${m.fewestThrows} 🖌`))}
-          </div>${signInNote}`;
-      } else {
-        const rows = await Cloud.starBoard(25);
-        if (`${view}:${levelIdx}` !== requested || !modal) return;
-        const uid = Cloud.user && Cloud.user.uid;
-        content.innerHTML = `<section class="board" style="max-width:560px;margin:0 auto">
-            <h3><span class="swatch" style="background:var(--yellow)"></span>Most stars collected<small>${LEVELS.length * 3} possible</small></h3>
-            ${rows.length ? `<ol>${rows.map((r, i) => `<li class="${r.uid === uid ? 'me' : ''}">
-              <span class="rank${r.rank === 1 ? ' first' : ''}">${r.rank}</span>${avatar(r.photo)}<span class="who">${esc(r.name)} <small style="color:var(--ink-2)">· ${r.levelsCleared || 0} levels</small></span>
-              <span class="val"><span class="stars">★</span> ${r.totalStars || 0}</span></li>`).join('')}</ol>` : '<div class="empty">No one yet. Be the first!</div>'}
-          </section>${signInNote}`;
-      }
-    } catch (e) {
-      console.warn(e);
-      if (modal) content.innerHTML = `<div class="error">${esc(friendlyError(e))}</div>`;
+    if (view === 'level') {
+      const lv = LEVELS[levelIdx];
+      content.innerHTML = `<div class="boards">
+          ${boardShell('⚡ Fastest', 'var(--red)', 'any stars')}
+          ${boardShell('★★★ Perfect run', 'var(--yellow)', 'all 3 cans')}
+          ${boardShell('🎨 Fewest throws', 'var(--blue)', 'paint used')}
+        </div>${joinNote()}`;
+      const [fast, perfect, few] = content.querySelectorAll('.board');
+      pagedBoard(fast, Cloud.levelPager(lv.name, 'bestTime'), (r) => boardRow(r, `${fmtTime(r.bestTime)} <span class="stars">${starsText(r.bestStars)}</span>`));
+      pagedBoard(perfect, Cloud.levelPager(lv.name, 'best3Time'), (r) => boardRow(r, fmtTime(r.best3Time)));
+      pagedBoard(few, Cloud.levelPager(lv.name, 'fewestThrows'), (r) => boardRow(r, `${r.fewestThrows} 🖌`));
+      // your own bests here, under each board
+      Cloud.myScore(lv.name).then((m) => {
+        if (!m || !document.body.contains(fast)) return;
+        [[fast, fmtTime(m.bestTime)], [perfect, m.best3Time === undefined ? null : fmtTime(m.best3Time)], [few, m.fewestThrows === undefined ? null : `${m.fewestThrows} 🖌`]]
+          .forEach(([el, v]) => { if (v) el.querySelector('.mine').innerHTML = `Your best: <b>${v}</b>`; });
+      }).catch(() => { });
+    } else {
+      content.innerHTML = `<div style="max-width:560px;margin:0 auto">${boardShell('Most stars collected', 'var(--yellow)', `${LEVELS.length * 3} possible`)}</div>${joinNote()}`;
+      pagedBoard(content.querySelector('.board'), Cloud.starPager(),
+        (r) => boardRow(r, `<span class="stars">★</span> ${r.totalStars || 0}`, ` <small style="color:var(--ink-2)">· ${r.levelsCleared || 0} levels</small>`));
     }
   }
 
   return {
     init(gameApi) {
       api = gameApi;
-      Cloud.onChange((u) => {
+      Cloud.onChange(() => {
         render();
-        if (u) sync();
+        if (Cloud.player) sync();
       });
       render();
     },
@@ -746,6 +876,7 @@ const UI = (() => {
     openGhostIntro,
     openAchievements,
     openDaily,
+    openNickname,
     signIn,
     refresh: () => render(),
     get modalOpen() { return !!modal; },

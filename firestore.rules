@@ -10,15 +10,33 @@ service cloud.firestore {
     function member() {
       return signedIn() && (request.auth.token.firebase.sign_in_provider != 'anonymous' || 'email' in request.auth.token);
     }
+    // A guest who picked a nickname: the name they're writing under is theirs (pr_names).
+    function ownsName(name) {
+      return signedIn() && name is string
+        && exists(/databases/$(database)/documents/pr_names/$(name.lower()))
+        && get(/databases/$(database)/documents/pr_names/$(name.lower())).data.uid == request.auth.uid;
+    }
+    // On the leaderboards: signed in with Google, or writing under your own nickname.
+    function player() { return member() || ownsName(request.resource.data.name); }
     // The game owner, who can open the stats page.
     function isAdmin() {
       return signedIn() && request.auth.token.email == 'filossof@gmail.com' && request.auth.token.email_verified == true;
     }
 
+    // Nicknames: one owner each, ignoring case (the document ID is the name in lowercase).
+    // Taken names can't be taken over (no updates); you can let go of your own.
+    match /pr_names/{key} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.lower() == key
+        && key.matches('^[a-z0-9_]{3,16}$');
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
     // Public profiles + progress; the star ranking reads these, so anyone may read.
     match /pr_players/{uid} {
       allow read: if true;
-      allow create, update: if member() && request.auth.uid == uid
+      allow create, update: if player() && request.auth.uid == uid
         && request.resource.data.name is string && request.resource.data.name.size() <= 60
         && request.resource.data.totalStars is int
         && request.resource.data.totalStars >= 0 && request.resource.data.totalStars <= 300;
@@ -30,11 +48,11 @@ service cloud.firestore {
       allow create, update: if member() && request.auth.uid == uid;
     }
 
-    // Leaderboards: one row per player per level. Public to read; each player writes only
-    // their own row, with sane values.
+    // Leaderboards: one row per player per level. Public to read; each player (Google or a
+    // nickname) writes only their own row, with sane values.
     match /pr_levels/{level}/pr_scores/{uid} {
       allow read: if true;
-      allow create, update: if member() && request.auth.uid == uid
+      allow create, update: if player() && request.auth.uid == uid
         && request.resource.data.uid == uid
         && request.resource.data.name is string && request.resource.data.name.size() <= 60
         && request.resource.data.bestTime is number && request.resource.data.bestTime >= 1
@@ -48,7 +66,7 @@ service cloud.firestore {
     // Only your own, only once that time is on the leaderboard, and never faster than your best there.
     match /pr_levels/{level}/pr_ghosts/{uid} {
       allow read: if true;
-      allow create, update: if member() && request.auth.uid == uid
+      allow create, update: if player() && request.auth.uid == uid
         && request.resource.data.uid == uid
         && request.resource.data.name is string && request.resource.data.name.size() <= 60
         && request.resource.data.data is string && request.resource.data.data.size() <= 250000
@@ -59,7 +77,7 @@ service cloud.firestore {
     // The Daily Chase: one row per player per day, their best time. Public to read.
     match /pr_daily/{day}/pr_scores/{uid} {
       allow read: if true;
-      allow create, update: if member() && request.auth.uid == uid
+      allow create, update: if player() && request.auth.uid == uid
         && request.resource.data.uid == uid
         && request.resource.data.name is string && request.resource.data.name.size() <= 60
         && request.resource.data.time is number && request.resource.data.time >= 1
