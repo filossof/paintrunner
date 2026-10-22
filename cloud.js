@@ -355,11 +355,18 @@ const Cloud = (() => {
       if (problem) throw Object.assign(new Error(problem), { code: 'bad-name' });
       for (let i = 0; !account && i < 30; i++) await new Promise((res) => setTimeout(res, 200));   // the guest account may still be on its way
       if (!account) throw Object.assign(new Error('offline'), { code: 'offline' });
-      const key = n.toLowerCase(), uid = account.uid, old = nick;
-      const ref = names().doc(key), d = await ref.get();
-      if (d.exists && d.data().uid !== uid) throw Object.assign(new Error('taken'), { code: 'taken' });
-      if (!d.exists) await ref.set({ uid, name: n, at: Date.now() });
-      else if (d.data().name !== n) { await ref.delete(); await ref.set({ uid, name: n, at: Date.now() }); }   // a new capitalization
+      const key = n.toLowerCase(), uid = account.uid, old = nick, ref = names().doc(key);
+      // One trip in the usual case: take the name. The database refuses if it's anyone's already
+      // (taking one is a create, never an update), and then we look at whose it is.
+      try {
+        await ref.set({ uid, name: n, at: Date.now() });
+      } catch (e) {
+        if (e.code !== 'permission-denied') throw e;
+        const d = await ref.get();
+        if (!d.exists) throw e;
+        if (d.data().uid !== uid) throw Object.assign(new Error('taken'), { code: 'taken' });
+        if (d.data().name !== n) { await ref.delete(); await ref.set({ uid, name: n, at: Date.now() }); }   // yours: a new capitalization
+      }
       if (old && old.toLowerCase() !== key) await names().doc(old.toLowerCase()).delete().catch(() => { });
       keepNick(uid, n);
       if (old) await track(renameRows(n));

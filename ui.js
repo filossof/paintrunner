@@ -226,26 +226,30 @@ const UI = (() => {
     const say = (msg, cls) => { status.textContent = msg; status.className = 'nick-status ' + (cls || ''); };
     // can't reach the database: before playing, let them play anyway rather than get stuck
     const offerSkip = () => { const sk = modal && modal.querySelector('[data-act="skip"]'); if (sk) sk.parentElement.hidden = false; };
+    // As you type: is the name well-formed (instant), and is it free (a quick look-up, for information:
+    // Save doesn't wait for it, since saving checks again anyway).
     const check = () => {
       const n = input.value.trim(), id = ++checkId;
-      save.disabled = true;
-      if (!n) return say('');
-      if (n === cur) return say('That\'s your name now.', 'ok');
-      const problem = Cloud.nickProblem(n);
-      if (problem) return say(problem, 'bad');
-      say('Checking…');
       clearTimeout(timer);
+      if (!n) { save.disabled = true; return say(''); }
+      if (n === cur) { save.disabled = true; return say('That\'s your name now.', 'ok'); }
+      const problem = Cloud.nickProblem(n);
+      if (problem) { save.disabled = true; return say(problem, 'bad'); }
+      save.disabled = false;
+      say('');
       timer = setTimeout(() => Cloud.nickFree(n).then((free) => {
-        if (id !== checkId) return;
-        if (free) { say(`✓ ${n} is free!`, 'ok'); save.disabled = false; } else say(`✗ ${n} is taken. Try another one.`, 'bad');
-      }).catch(() => { if (id === checkId) { say('Could not check right now. Try again.', 'bad'); offerSkip(); } }), 350);
+        if (id !== checkId || saving) return;
+        if (free) say(`✓ ${n} is free!`, 'ok'); else { say(`✗ ${n} is taken. Try another one.`, 'bad'); save.disabled = true; }
+      }).catch(() => { }), 250);
     };
+    let saving = false;
     input.addEventListener('input', check);
     modal.querySelector('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const n = input.value.trim();
-      if (save.disabled) return;
-      save.disabled = true; say('Saving…');
+      if (save.disabled || saving) return;
+      saving = true; ++checkId;
+      save.disabled = true; save.textContent = 'Saving…'; say('');
       try {
         await Cloud.setNick(n);
         Cloud.note('nickPicked', auto ? 'auto' : 'menu');
@@ -255,7 +259,8 @@ const UI = (() => {
         if (done) done();
       } catch (err) {
         console.warn(err);
-        say(err.code === 'taken' ? `✗ ${n} was just taken. Try another one.` : err.code === 'bad-name' ? err.message
+        saving = false; save.textContent = 'Save';
+        say(err.code === 'taken' ? `✗ ${n} is taken. Try another one.` : err.code === 'bad-name' ? err.message
           : err.code === 'permission-denied' ? 'Nicknames are not switched on yet (the database rules need publishing).' : 'Could not save. Check your connection and try again.', 'bad');
         if (err.code !== 'taken') save.disabled = false;
         if (err.code !== 'taken' && err.code !== 'bad-name') offerSkip();
