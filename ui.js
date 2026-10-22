@@ -172,7 +172,9 @@ const UI = (() => {
   }
 
   let onModalClose = null;   // called once when the current window closes (openNickname)
+  let modalRequired = false; // the nickname window before playing: Escape doesn't close it
   function close() {
+    modalRequired = false;
     if (modal) modal.remove();
     modal = null;
     cancelAnimationFrame(charAnim);
@@ -186,23 +188,27 @@ const UI = (() => {
   const NICK_A = ['Swift', 'Sneaky', 'Bouncy', 'Mighty', 'Tiny', 'Brave', 'Speedy', 'Inky', 'Splashy', 'Sticky', 'Jumpy', 'Lucky', 'Wild', 'Cosmic', 'Turbo'];
   const NICK_B = ['Blob', 'Brush', 'Splat', 'Runner', 'Drop', 'Ninja', 'Painter', 'Comet', 'Bean', 'Rocket', 'Pixel', 'Dash', 'Frog', 'Fox', 'Panda'];
   const randomNick = () => NICK_A[Math.floor(Math.random() * NICK_A.length)] + NICK_B[Math.floor(Math.random() * NICK_B.length)] + Math.floor(10 + Math.random() * 90);
-  function openNickname({ auto = false, claim = null, onDone = null, onClose = null } = {}) {
+  // required: before playing (no ✕ or Later); if the database can't be reached, onSkip lets them play anyway
+  function openNickname(opts = {}) {
+    const { auto = false, claim = null, onClose = null, required = false, onSkip = null } = opts;
+    let { onDone = null } = opts;
     if (modal) close();
-    if (!Cloud.available) return api.toast('The leaderboards are offline right now.');
+    if (!Cloud.available) return required && onSkip ? onSkip() : api.toast('The leaderboards are offline right now.');
     modal = document.createElement('div');
     modal.className = 'modal-back';
+    modalRequired = required;
     onModalClose = onClose;
     const cur = Cloud.nick || '';
     const where = claim && claim.rank ? `<p class="nick-claim">🏆 Your <b>${claim.time.toFixed(3)}s</b> would be <b>#${claim.rank}</b>. Pick a name and the spot is yours!</p>` : '';
     modal.innerHTML = `
       <div class="modal nick" role="dialog" aria-modal="true" aria-labelledby="nick-title" style="max-width:520px">
         <div class="modal-head">
-          <h2 id="nick-title">✏️ ${cur ? 'Change your nickname' : 'Pick your nickname'}</h2>
-          <button class="close" data-act="close" aria-label="Close">✕</button>
+          <h2 id="nick-title">${required ? '👋 What should we call you?' : `✏️ ${cur ? 'Change your nickname' : 'Pick your nickname'}`}</h2>
+          ${required ? '' : '<button class="close" data-act="close" aria-label="Close">✕</button>'}
         </div>
         <div class="modal-body">
           ${where}
-          <p class="note">It's your name on the leaderboards${cur ? '' : '. Your best times so far go up right away'}. Letters, digits and _, 3 to 16 long.</p>
+          <p class="note">${required ? 'Pick a nickname to start playing. It\'s your name on the leaderboards' : `It's your name on the leaderboards${cur ? '' : '. Your best times so far go up right away'}`}. Letters, digits and _, 3 to 16 long.</p>
           <form class="nick-form" autocomplete="off">
             <input id="nick-in" maxlength="16" value="${esc(cur)}" placeholder="e.g. ${esc(randomNick())}" aria-label="Nickname" aria-describedby="nick-status" autocapitalize="off" autocorrect="off" spellcheck="false">
             <button class="btn small" type="button" data-act="dice" title="Suggest a name" aria-label="Suggest a name">🎲</button>
@@ -211,12 +217,15 @@ const UI = (() => {
           <p class="nick-status" id="nick-status" aria-live="polite"></p>
           ${Cloud.user ? '' : `<p class="nick-or">or <button class="btn small" data-act="signin">${GOOGLE_G} Sign in with Google</button> to keep your name and progress safe on every device${api.giftPending() ? ' · <b>🎁 +500 Drops</b>' : ''}</p>`}
           ${auto ? '<p class="nick-later"><button class="btn small" data-act="close">Later</button></p>' : ''}
+          ${required ? '<p class="nick-later" hidden><button class="btn small" data-act="skip">Play without a name</button></p>' : ''}
         </div>
       </div>`;
     document.body.appendChild(modal);
     const input = modal.querySelector('#nick-in'), status = modal.querySelector('.nick-status'), save = modal.querySelector('[type="submit"]');
     let checkId = 0, timer = 0;
     const say = (msg, cls) => { status.textContent = msg; status.className = 'nick-status ' + (cls || ''); };
+    // can't reach the database: before playing, let them play anyway rather than get stuck
+    const offerSkip = () => { const sk = modal && modal.querySelector('[data-act="skip"]'); if (sk) sk.parentElement.hidden = false; };
     const check = () => {
       const n = input.value.trim(), id = ++checkId;
       save.disabled = true;
@@ -229,7 +238,7 @@ const UI = (() => {
       timer = setTimeout(() => Cloud.nickFree(n).then((free) => {
         if (id !== checkId) return;
         if (free) { say(`✓ ${n} is free!`, 'ok'); save.disabled = false; } else say(`✗ ${n} is taken. Try another one.`, 'bad');
-      }).catch(() => { if (id === checkId) say('Could not check right now. Try again.', 'bad'); }), 350);
+      }).catch(() => { if (id === checkId) { say('Could not check right now. Try again.', 'bad'); offerSkip(); } }), 350);
     };
     input.addEventListener('input', check);
     modal.querySelector('form').addEventListener('submit', async (e) => {
@@ -249,12 +258,18 @@ const UI = (() => {
         say(err.code === 'taken' ? `✗ ${n} was just taken. Try another one.` : err.code === 'bad-name' ? err.message
           : err.code === 'permission-denied' ? 'Nicknames are not switched on yet (the database rules need publishing).' : 'Could not save. Check your connection and try again.', 'bad');
         if (err.code !== 'taken') save.disabled = false;
+        if (err.code !== 'taken' && err.code !== 'bad-name') offerSkip();
       }
     });
     modal.addEventListener('click', (e) => {
-      if (e.target === modal || e.target.closest('[data-act="close"]')) return close();
+      if ((e.target === modal && !required) || e.target.closest('[data-act="close"]')) return close();
+      if (e.target.closest('[data-act="skip"]')) { close(); if (onSkip) onSkip(); return; }
       if (e.target.closest('[data-act="dice"]')) { input.value = randomNick(); check(); input.focus(); }
-      if (e.target.closest('[data-act="signin"]')) { const done = onDone; onDone = null; close(); signIn('nickname').then(() => { if (done && Cloud.player) done(); }); }
+      if (e.target.closest('[data-act="signin"]')) {
+        const done = onDone; onDone = null; close();
+        // signed in: that's a name too. Cancelled (before playing): back to picking a nickname.
+        signIn('nickname').then(() => { if (Cloud.player) { if (done) done(); } else if (required) openNickname({ ...opts, onDone: done }); });
+      }
     });
     input.focus();
     if (cur) input.select();
@@ -780,9 +795,13 @@ const UI = (() => {
 
   document.addEventListener('keydown', (e) => {
     if (!modal) return;
-    if (e.key === 'Escape' || e.key === 'l' || e.key === 'L') { e.preventDefault(); close(); }
-    if (view === 'level' && e.key === 'ArrowLeft') { levelIdx = (levelIdx + LEVELS.length - 1) % LEVELS.length; load(); }
-    if (view === 'level' && e.key === 'ArrowRight') { levelIdx = (levelIdx + 1) % LEVELS.length; load(); }
+    const typing = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+    if (e.key === 'Escape' && !modalRequired) { e.preventDefault(); close(); return; }
+    if (typing) return;   // (typing a nickname with an L in it mustn't close the window)
+    const boards = !!modal.querySelector('.level-pick');
+    if (boards && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); close(); }
+    if (boards && view === 'level' && e.key === 'ArrowLeft') { levelIdx = (levelIdx + LEVELS.length - 1) % LEVELS.length; load(); }
+    if (boards && view === 'level' && e.key === 'ArrowRight') { levelIdx = (levelIdx + 1) % LEVELS.length; load(); }
   });
 
   // One board: a page of 10 at a time (the top 100), with ◀ ▶ and a jump to your own place.

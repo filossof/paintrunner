@@ -807,8 +807,21 @@
     game.mode = 'title';
   }
 
-  // Anyone can play; signing in (optional) saves progress to the account and adds the leaderboards.
-  function play(i) { startLevel(i); }
+  // ---------- a nickname before playing ----------
+  // Everyone plays under a name on the leaderboards: a guest picks a nickname before their first level
+  // (a new player: right after "tap to start", before the comic). Signing in with Google counts too.
+  // If the database can't be reached, they may play without one (nickSkipped).
+  let nickSkipped = false;
+  function withNick(then) {
+    if (!online() || typeof UI === 'undefined' || nickSkipped) return then();
+    if (!Cloud.isReady) { Cloud.ready.then(() => withNick(then)); return; }
+    if (Cloud.player) return then();
+    if (UI.modalOpen) return;
+    keys.clear(); pressed.clear(); mouse.down = mouse.right = false;
+    const go = () => { keys.clear(); pressed.clear(); mouse.down = false; then(); };
+    UI.openNickname({ required: true, onDone: go, onSkip: () => { nickSkipped = true; go(); } });
+  }
+  function play(i) { withNick(() => startLevel(i)); }
 
   // ---------- ghosts (recording and playback: ghost.js) ----------
   // The ghost for a level: the fastest recorded run ('top'), or your own best ('mine').
@@ -2254,7 +2267,7 @@
     const wait = setInterval(() => {
       if (typeof Story === 'undefined' || document.getElementById('splash')) return;
       clearInterval(wait);
-      if (game.mode === 'title') playStory(storyHash || 'intro');
+      if (game.mode === 'title') { if (storyHash) playStory(storyHash); else withNick(() => playStory('intro')); }
     }, 150);
   }
 

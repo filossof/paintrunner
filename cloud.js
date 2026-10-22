@@ -353,6 +353,7 @@ const Cloud = (() => {
     async setNick(n) {
       const problem = nickProblem(n);
       if (problem) throw Object.assign(new Error(problem), { code: 'bad-name' });
+      for (let i = 0; !account && i < 30; i++) await new Promise((res) => setTimeout(res, 200));   // the guest account may still be on its way
       if (!account) throw Object.assign(new Error('offline'), { code: 'offline' });
       const key = n.toLowerCase(), uid = account.uid, old = nick;
       const ref = names().doc(key), d = await ref.get();
