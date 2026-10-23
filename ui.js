@@ -103,15 +103,35 @@ const UI = (() => {
   // keep clicks on the overlay from also hitting the game underneath
   overlay.addEventListener('mousedown', (e) => e.stopPropagation());
 
+  // Sign-in never fails silently: if the Google window closes without signing in, or anything goes
+  // wrong, the player is told (with the error code, which also goes to the stats).
   async function signIn(via) {
     try {
-      await Cloud.signIn(typeof via === 'string' ? via : 'menu');
+      const ok = await Cloud.signIn(typeof via === 'string' ? via : 'menu');
       await Cloud.ready;
+      if (ok === false) return notice('Not signed in', 'The Google window closed before you were signed in.', 'If you did pick your account, your browser may be blocking the sign-in window (blocked third-party cookies, a privacy setting or an extension). Try again, or try another browser such as Chrome.');
     } catch (e) {
       console.error(e);
-      if (e.code === 'embedded') api.toast('Sign-in is blocked on this page. Play at filossof.github.io/paintrunner to sign in.', 6000);
-      else api.toast('Sign-in failed');
+      if (e.code === 'embedded') return notice('Sign-in is blocked here', 'This page doesn\'t allow the Google sign-in window.', 'Play at filossof.github.io/paintrunner to sign in.');
+      return notice('Sign-in failed', 'Something went wrong while signing in with Google. Please try again.', `Error: ${e.code || e.message || 'unknown'}`);
     }
+  }
+  // a small message window (sign-in problems); resolves when it's closed
+  function notice(title, text, detail = '') {
+    if (modal) close();
+    const closed = new Promise((res) => { onModalClose = res; });
+    modal = document.createElement('div');
+    modal.className = 'modal-back';
+    modal.innerHTML = `
+      <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="notice-title" style="max-width:480px">
+        <div class="modal-head"><h2 id="notice-title">⚠️ ${esc(title)}</h2><button class="close" data-act="close" aria-label="Close">✕</button></div>
+        <div class="modal-body"><p>${esc(text)}</p>${detail ? `<p class="note">${esc(detail)}</p>` : ''}
+          <p style="text-align:right;margin:12px 0 0"><button class="btn" data-act="close">OK</button></p></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target === modal || e.target.closest('[data-act="close"]')) close(); });
+    modal.querySelector('.btn[data-act="close"]').focus();
+    return closed;
   }
 
   // Progress follows you between computers once you sign in.

@@ -72,7 +72,10 @@
   let data = null;
   function signInScreen(msg) {
     app.innerHTML = `<p class="msg">${msg}</p><p class="msg"><button class="btn" id="signin">Sign in with Google</button></p>`;
-    document.getElementById('signin').onclick = () => Cloud.signIn().catch((e) => alert(e.message));
+    // (no linking here: the stats page just signs in to your own account)
+    document.getElementById('signin').onclick = () => Cloud.signIn('stats', { link: false })
+      .then((ok) => { if (ok === false) alert('The Google window closed before you were signed in. If you did pick your account, your browser may be blocking sign-in windows (third-party cookies or a privacy setting). Try again, or try another browser.'); })
+      .catch((e) => alert(`Sign-in failed: ${e.code || ''} ${e.message || e}`));
   }
   async function load() {
     refreshBtn.disabled = true;

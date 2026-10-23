@@ -326,7 +326,9 @@ const Cloud = (() => {
     try {
       res = await guest.linkWithPopup(provider);
     } catch (e) {
-      if (e.code === 'auth/credential-already-in-use' && e.credential) return auth.signInWithCredential(e.credential);
+      // that Google account already has its own account: switch to it
+      const cred = e.code === 'auth/credential-already-in-use' && (e.credential || firebase.auth.GoogleAuthProvider.credentialFromError?.(e));
+      if (cred) return auth.signInWithCredential(cred);
       throw e;
     }
     const u = res.user, g = u.providerData.find((p) => p.providerId === 'google.com');
@@ -405,22 +407,33 @@ const Cloud = (() => {
       return { rank: null, gap: time - times[Math.min(9, times.length - 1)] };
     },
 
-    async signIn(via = 'menu') {
+    /* Signs in with Google (a popup). A guest's account is linked to Google, so it keeps its history
+       and nickname (link: false skips that, e.g. on the stats page). Resolves to true once signed in,
+       false if the window was closed first; anything else that goes wrong is thrown (and recorded:
+       funnel.signinError, for the stats). */
+    async signIn(via = 'menu', { link = true } = {}) {
       if (!available) throw new Error('offline');
       this.note('signinClick', via);
       const provider = new firebase.auth.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      const guest = account && account.isAnonymous ? account : null;
+      const guest = link && account && account.isAnonymous ? account : null;
       try {
         if (guest) await linkGuest(guest, provider);
         else await auth.signInWithPopup(provider);
+        if (!user) {   // Firebase said yes, but we're not signed in: shouldn't happen, but say so
+          if (auth.currentUser && !auth.currentUser.isAnonymous) setAccount(auth.currentUser);
+          else throw Object.assign(new Error('Signed in, but the account did not switch'), { code: 'not-switched' });
+        }
         this.note('signedIn', via);
+        return true;
       } catch (e) {
+        funnel.signinError = String(e.code || e.message || e).slice(0, 80);
+        this.note('signinFailed', via);
         const cantPopup = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/unauthorized-domain', 'auth/web-storage-unsupported'].includes(e.code);
         // inside another site's frame (itch.io) a redirect would leave the game, and Google won't load in a frame
         if (cantPopup && Cloud.embedded) { const err = new Error('embedded'); err.code = 'embedded'; throw err; }
         if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return guest ? guest.linkWithRedirect(provider) : auth.signInWithRedirect(provider);
-        if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return null;
+        if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return false;
         throw e;
       }
     },
