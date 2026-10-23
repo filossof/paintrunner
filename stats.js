@@ -200,7 +200,20 @@
   }
 
   // ---------------- render ----------------
-  const openPlayers = new Set();
+  const openPlayers = new Set(), openSources = new Set();
+
+  // The players who came from one source (in the chosen period), most play time first.
+  function sourcePlayers(x) {
+    const kind = (p) => (!p.guest ? '<span class="tag">Google</span>' : p.nick ? '<span class="tag">nickname</span>' : '<span class="tag">guest</span>');
+    const rows = x.players.slice().sort((a, b) => b.inRange - a.inRange || (b.lastActive || 0) - (a.lastActive || 0)).map((p) => `<tr>
+        <td>${avatar(p.photo)} ${p.guest && !p.nick ? `<span class="muted">${esc(p.name)}</span>` : esc(p.nick || p.name)} ${kind(p)}</td>
+        <td class="num">${p.inRange > 0 ? dur(p.inRange) : '<span class="muted">didn\'t play</span>'}</td>
+        <td class="num">${num(p.clearedInRange)}</td>
+        <td class="num">${p.returned ? '✓' : '<span class="muted">—</span>'}</td>
+        <td>${p.device ? `${DEVICE_ICON[p.device]} ${p.device}` : '<span class="muted">—</span>'}</td>
+        <td class="num">${ago(p.lastActive)}</td></tr>`).join('');
+    return `<table class="mini"><thead><tr><th>Player</th><th class="num">Play time</th><th class="num">Levels cleared</th><th class="num">Came back</th><th>Device</th><th class="num">Last active</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
   let recent = [], recentPage = 0;
   const PAGE = 50;
 
@@ -299,11 +312,12 @@
         kept: ps.filter((p) => p.clearedInRange >= 2).length,
         time: secs.length ? median(secs) : null, totalTime: sum(ps, (p) => p.inRange),
         signedIn: ps.filter((p) => !p.guest).length, returned: ps.filter((p) => p.returned).length,
+        players: ps,
       };
     });
     const share = (a, b) => `${num(a)} <span class="muted">${pct(a, b)}</span>`;
     const sourceCols = [
-      { key: 'name', label: 'Source', fmt: (x) => (x.name === UNKNOWN_SOURCE ? `<span class="muted">${x.name}</span>` : esc(x.name)) },
+      { key: 'name', label: 'Source', fmt: (x) => `<span class="caret">${openSources.has(x.name) ? '▾' : '▸'}</span> ${x.name === UNKNOWN_SOURCE ? `<span class="muted">${x.name}</span>` : esc(x.name)}` },
       { key: 'visitors', label: 'Visitors', num: true, fmt: (x) => num(x.visitors) },
       { key: 'played', label: 'Played a level', num: true, fmt: (x) => share(x.played, x.visitors) },
       { key: 'kept', label: 'Cleared 2+ levels', num: true, fmt: (x) => share(x.kept, x.visitors) },
@@ -313,7 +327,13 @@
       { key: 'returned', label: 'Came back', num: true, fmt: (x) => share(x.returned, x.visitors) },
     ];
     const sources = `<p class="note">Each player counts once, under where they <b>first</b> came from (a later visit from a bookmark still counts for the original source). Tag links you share with <code>?src=</code>, e.g. <code>filossof.github.io/paintrunner/?src=reddit-ad</code>, and they get their own row. "Came back" means played or visited on two or more days.</p>
-      ${table('sources', sourceCols, sourceRows, { sort: { key: 'visitors', dir: -1 }, empty: 'No visitors in this period.' })}`;
+      ${table('sources', sourceCols, sourceRows, {
+        sort: { key: 'visitors', dir: -1 }, empty: 'No visitors in this period.',
+        rowId: (x) => x.name,
+        isOpen: (x) => openSources.has(x.name),
+        toggle: (name) => (openSources.has(name) ? openSources.delete(name) : openSources.add(name)),
+        expand: sourcePlayers,
+      })}<p class="note">Click a source to see its players.</p>`;
 
     // ---- daily charts (always the last 30 days) ----
     const days = Array.from({ length: 30 }, (_, i) => today - (29 - i) * DAY);
